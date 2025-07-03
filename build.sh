@@ -7,6 +7,7 @@ echo "Building AMCheck C++ (Standalone Version)..."
 # Parse command line arguments
 BUILD_STATIC=ON
 BUILD_FULLY_STATIC=OFF
+ENABLE_CUDA=ON
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -20,11 +21,17 @@ while [[ $# -gt 0 ]]; do
             echo "Fully static linking enabled"
             shift
             ;;
+        --no-cuda)
+            ENABLE_CUDA=OFF
+            echo "CUDA support disabled"
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--no-static] [--fully-static]"
+            echo "Usage: $0 [--no-static] [--fully-static] [--no-cuda]"
             echo "  --no-static     : Disable static linking (dynamic linking)"
             echo "  --fully-static  : Enable fully static linking (all libraries)"
+            echo "  --no-cuda       : Disable CUDA GPU acceleration"
             exit 1
             ;;
     esac
@@ -140,7 +147,8 @@ esac
 echo "Configuring with CMake for standalone executable..."
 cmake .. -DCMAKE_BUILD_TYPE=Release \
          -DBUILD_STATIC=$BUILD_STATIC \
-         -DBUILD_FULLY_STATIC=$BUILD_FULLY_STATIC
+         -DBUILD_FULLY_STATIC=$BUILD_FULLY_STATIC \
+         -DENABLE_CUDA=$ENABLE_CUDA
 
 echo "Building..."
 make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)

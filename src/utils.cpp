@@ -1,4 +1,7 @@
 #include "amcheck.h"
+#ifdef HAVE_CUDA
+#include "cuda_accelerator.h"
+#endif
 #include <iostream>
 #include <iomanip>
 
@@ -100,9 +103,49 @@ void print_banner() {
 void print_version() {
     print_banner();
     std::cout << "AMCheck C++ v1.0.0 - Altermagnet Detection Suite\n";
-    std::cout << "Built with: Eigen3, spglib, C++17\n";
-    std::cout << "Features: POSCAR parsing, Symmetry analysis, Magnetic structure detection\n";
+    std::cout << "Built with: Eigen3, spglib, C++17";
+#ifdef HAVE_CUDA
+    std::cout << ", CUDA";
+#endif
     std::cout << "\n";
+    std::cout << "Features: POSCAR parsing, Symmetry analysis, Magnetic structure detection";
+#ifdef HAVE_CUDA
+    std::cout << ", GPU acceleration";
+#endif
+    std::cout << "\n";
+    
+    // Show GPU information if available
+#ifdef HAVE_CUDA
+    try {
+        cuda::CudaSpinSearcher gpu_tester;
+        if (gpu_tester.initialize()) {
+            auto config = gpu_tester.get_config();
+            std::cout << "GPU: " << config.device_name << " (CC " << config.compute_capability << ")\n";
+        } else {
+            std::cout << "GPU: Not available\n";
+        }
+    } catch (...) {
+        std::cout << "GPU: Detection failed\n";
+    }
+#else
+    std::cout << "GPU: Not compiled with CUDA support\n";
+#endif
+    
+    std::cout << "\n";
+}
+
+// Function to test GPU availability
+bool is_gpu_available() {
+#ifdef HAVE_CUDA
+    try {
+        cuda::CudaSpinSearcher tester;
+        return tester.initialize();
+    } catch (...) {
+        return false;
+    }
+#else
+    return false;
+#endif
 }
 
 void print_usage(const std::string& program_name) {
@@ -125,6 +168,10 @@ void print_usage(const std::string& program_name) {
         std::cout << "   -t, --tolerance    Numerical tolerance (default: " << DEFAULT_TOLERANCE << ")\n";
         std::cout << "   -a, --search-all   Search all possible spin configurations (multithreaded)\n";
         std::cout << "   --ahc              Analyze Anomalous Hall Coefficient\n";
+#ifdef HAVE_CUDA
+        std::cout << "   --gpu              Enable GPU acceleration (default if available)\n";
+        std::cout << "   --cpu, --no-gpu    Force CPU-only computation\n";
+#endif
         std::cout << "\n";
         std::cout << "ARGUMENTS:\n";
         std::cout << "   structure_file     Crystal structure file (VASP POSCAR format)\n";
@@ -134,8 +181,14 @@ void print_usage(const std::string& program_name) {
         std::cout << "   " << program_name << " -v --symprec 1e-5 POSCAR  # Verbose with custom precision\n";
         std::cout << "   " << program_name << " -a POSCAR                 # Search all spin configurations\n";
         std::cout << "   " << program_name << " --ahc POSCAR              # Anomalous Hall analysis\n";
+#ifdef HAVE_CUDA
+        std::cout << "   " << program_name << " -a --gpu POSCAR           # GPU-accelerated search\n";
+#endif
         std::cout << "\n";
         std::cout << "💡 TIP: For best results, ensure your POSCAR file contains a well-converged structure!\n";
+#ifdef HAVE_CUDA
+        std::cout << "🚀 GPU acceleration available - use --gpu/--cpu to control!\n";
+#endif
         std::cout << "\n";
     } else {
         // ASCII version for Windows/non-Unicode terminals
@@ -154,6 +207,10 @@ void print_usage(const std::string& program_name) {
         std::cout << "   -t, --tolerance    Numerical tolerance (default: " << DEFAULT_TOLERANCE << ")\n";
         std::cout << "   -a, --search-all   Search all possible spin configurations (multithreaded)\n";
         std::cout << "   --ahc              Analyze Anomalous Hall Coefficient\n";
+#ifdef HAVE_CUDA
+        std::cout << "   --gpu              Enable GPU acceleration (default if available)\n";
+        std::cout << "   --cpu, --no-gpu    Force CPU-only computation\n";
+#endif
         std::cout << "\n";
         std::cout << "ARGUMENTS:\n";
         std::cout << "   structure_file     Crystal structure file (VASP POSCAR format)\n";
@@ -163,9 +220,15 @@ void print_usage(const std::string& program_name) {
         std::cout << "   " << program_name << " -v --symprec 1e-5 POSCAR  # Verbose with custom precision\n";
         std::cout << "   " << program_name << " -a POSCAR                 # Search all spin configurations\n";
         std::cout << "   " << program_name << " --ahc POSCAR              # Anomalous Hall analysis\n";
+#ifdef HAVE_CUDA
+        std::cout << "   " << program_name << " -a --gpu POSCAR           # GPU-accelerated search\n";
+#endif
         std::cout << "\n";
         std::cout << "TIP: For best results, ensure your POSCAR file contains a well-converged structure!\n";
         std::cout << "     To enable Unicode output on Windows, set AMCHECK_USE_UNICODE=1\n";
+#ifdef HAVE_CUDA
+        std::cout << "     GPU acceleration available - use --gpu/--cpu to control!\n";
+#endif
         std::cout << "\n";
     }
 }

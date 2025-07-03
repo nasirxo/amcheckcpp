@@ -1,4 +1,7 @@
 #include "amcheck.h"
+#ifdef HAVE_CUDA
+#include "cuda_accelerator.h"
+#endif
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -408,13 +411,44 @@ Matrix3d symmetrized_conductivity_tensor(
 void search_all_spin_configurations(
     const CrystalStructure& structure,
     double tolerance,
-    bool verbose
+    bool verbose,
+    bool use_gpu
 ) {
     const size_t num_atoms = structure.atoms.size();
     
     // Get indices of magnetic atoms only
     std::vector<size_t> magnetic_indices = get_magnetic_atom_indices(structure);
     const size_t num_magnetic_atoms = magnetic_indices.size();
+    
+    // GPU acceleration setup
+    bool use_cuda = false;
+    std::string acceleration_method = "CPU";
+    
+#ifdef HAVE_CUDA
+    std::unique_ptr<cuda::CudaSpinSearcher> cuda_searcher;
+    
+    if (use_gpu) {
+        cuda_searcher = std::make_unique<cuda::CudaSpinSearcher>();
+        if (cuda_searcher->initialize()) {
+            use_cuda = true;
+            acceleration_method = "GPU (CUDA)";
+            
+            auto config = cuda_searcher->get_config();
+            std::cout << "\n🚀 GPU ACCELERATION ENABLED\n";
+            std::cout << "Device: " << config.device_name << "\n";
+            std::cout << "Compute Capability: " << config.compute_capability << "\n";
+            std::cout << "Available VRAM: " << (config.memory_limit / (1024*1024)) << " MB\n";
+        } else {
+            std::cout << "\n⚠️  GPU requested but not available - falling back to CPU\n";
+        }
+    } else {
+        std::cout << "\n💻 CPU-only mode selected\n";
+    }
+#else
+    if (use_gpu) {
+        std::cout << "\n⚠️  GPU requested but CUDA support not compiled - using CPU\n";
+    }
+#endif
     
     if (num_magnetic_atoms == 0) {
         std::cout << "\n=======================================================================\n";
@@ -451,6 +485,7 @@ void search_all_spin_configurations(
     std::cout << "=======================================================================\n";
     std::cout << "Structure: " << num_atoms << " total atoms (" << num_magnetic_atoms << " magnetic)\n";
     std::cout << "Total configurations to test: " << total_configurations << "\n";
+    std::cout << "Acceleration method: " << acceleration_method << "\n";
     std::cout << "CPU cores available: " << num_threads << "\n";
     std::cout << "Tolerance: " << tolerance << "\n";
     std::cout << "Output file: " << output_filename << "\n";
@@ -476,6 +511,63 @@ void search_all_spin_configurations(
     std::mutex output_mutex;  // For thread-safe console output
     std::atomic<size_t> completed_configs(0);
     std::atomic<size_t> altermagnetic_count(0);
+    
+    // GPU-accelerated search if available
+#ifdef HAVE_CUDA
+    if (use_cuda && cuda_searcher) {
+        std::cout << "Starting GPU-accelerated search...\n";
+        
+        try {
+            std::vector<SpinConfiguration> gpu_results = cuda_searcher->search_configurations(
+                structure, magnetic_indices, tolerance, verbose
+            );
+            
+            // Process GPU results
+            for (const auto& config : gpu_results) {
+                if (config.is_altermagnetic) {
+                    altermagnetic_configs.push_back(config);
+                    altermagnetic_count++;
+                    
+                    // Display configuration immediately when found
+                    std::cout << "GPU FOUND Config #" << std::setw(8) << config.configuration_id << ": ";
+                    
+                    // Show compact spin pattern
+                    for (size_t j = 0; j < config.spins.size(); ++j) {
+                        if (j > 0) std::cout << " ";
+                        std::cout << spin_to_string(config.spins[j]);
+                    }
+                    
+                    // Show detailed atomic assignment
+                    std::cout << " [";
+                    for (size_t j = 0; j < structure.atoms.size(); ++j) {
+                        if (j > 0) std::cout << " ";
+                        std::cout << structure.atoms[j].chemical_symbol << (j+1) << ":" << spin_to_string(config.spins[j]);
+                    }
+                    std::cout << "]\n" << std::flush;
+                }
+            }
+            
+            completed_configs = total_configurations;
+            
+            std::cout << "\r" << std::string(80, ' ') << "\r";  // Clear progress line
+            std::cout << "GPU search completed: " << total_configurations << "/" << total_configurations 
+                      << " configurations processed\n\n";
+            
+            // Skip CPU search since GPU completed everything
+            goto skip_cpu_search;
+            
+        } catch (const std::exception& e) {
+            std::cout << "GPU search failed: " << e.what() << "\n";
+            std::cout << "Falling back to CPU search...\n";
+            use_cuda = false;
+            acceleration_method = "CPU (GPU fallback)";
+        }
+    }
+#endif
+    
+    // CPU multithreaded search (fallback or primary method)
+    std::vector<SpinConfiguration> cpu_results;
+    std::atomic<size_t> cpu_completed_configs(0);
     
     // Create worker function - only considers magnetic atoms
     auto worker = [&](size_t start_config, size_t end_config) {
@@ -604,6 +696,7 @@ void search_all_spin_configurations(
               << total_configurations << ") - Found: " 
               << altermagnetic_count << " altermagnetic configs\n\n";
     
+skip_cpu_search:
     // Display results
     std::cout << "=======================================================================\n";
     std::cout << "                           SEARCH RESULTS\n";
@@ -634,6 +727,7 @@ void search_all_spin_configurations(
     outfile << "# AMCheck C++ - Altermagnetic Spin Configurations\n";
     outfile << "# Generated on: " << __DATE__ << " " << __TIME__ << "\n";
     outfile << "# Structure: " << num_atoms << " atoms\n";
+    outfile << "# Acceleration method: " << acceleration_method << "\n";
     outfile << "# Total configurations tested: " << total_configurations << "\n";
     outfile << "# Altermagnetic configurations found: " << altermagnetic_configs.size() << "\n";
     outfile << "# Tolerance: " << tolerance << "\n";
@@ -726,6 +820,7 @@ void search_all_spin_configurations(
     
     std::cout << "\nSummary:\n";
     std::cout << "-----------------------------------------------------------------------\n";
+    std::cout << "- Acceleration method: " << acceleration_method << "\n";
     std::cout << "- Total configurations tested: " << total_configurations << "\n";
     std::cout << "- Altermagnetic configurations found: " << altermagnetic_configs.size() << "\n";
     std::cout << "- Success rate: " << std::fixed << std::setprecision(2) 

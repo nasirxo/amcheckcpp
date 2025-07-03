@@ -16,6 +16,53 @@ endif()
 # Find threading library
 find_package(Threads REQUIRED)
 
+# CUDA support (optional)
+option(ENABLE_CUDA "Enable CUDA GPU acceleration" ON)
+
+if(ENABLE_CUDA)
+    # Check if CUDA compiler is available before enabling the language
+    find_program(NVCC_EXECUTABLE nvcc)
+    
+    if(NVCC_EXECUTABLE)
+        enable_language(CUDA)
+        find_package(CUDA QUIET)
+        
+        if(CUDA_FOUND)
+            find_package(CUDAToolkit QUIET)
+            if(CUDAToolkit_FOUND)
+                set(HAVE_CUDA TRUE)
+                add_definitions(-DHAVE_CUDA)
+                message(STATUS "CUDA found: ${CUDA_VERSION}")
+                message(STATUS "CUDA Toolkit found: ${CUDAToolkit_VERSION}")
+                
+                # Set CUDA flags
+                set(CMAKE_CUDA_STANDARD 17)
+                set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+                set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
+                
+                # CUDA architecture detection
+                if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+                    set(CMAKE_CUDA_ARCHITECTURES "50;61;75;86")  # Common architectures
+                    message(STATUS "Using default CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+                endif()
+                
+            else()
+                message(STATUS "CUDA found but CUDAToolkit not found - CUDA disabled")
+                set(HAVE_CUDA FALSE)
+            endif()
+        else()
+            message(STATUS "CUDA compiler found but CUDA not found - CUDA disabled")
+            set(HAVE_CUDA FALSE)
+        endif()
+    else()
+        message(STATUS "NVCC compiler not found - CUDA disabled")
+        set(HAVE_CUDA FALSE)
+    endif()
+else()
+    message(STATUS "CUDA support disabled by user")
+    set(HAVE_CUDA FALSE)
+endif()
+
 # Eigen3 detection strategy based on platform
 if(MSYS OR MINGW OR PLATFORM_WINDOWS)
     # MSYS2/MinGW specific settings
@@ -136,7 +183,8 @@ else()
 endif()
 
 # Create the main executable
-add_executable(amcheck
+# Create source lists
+set(AMCHECK_SOURCES
     src/main.cpp
     src/amcheck.cpp
     src/crystal_structure.cpp
@@ -145,6 +193,14 @@ add_executable(amcheck
     src/utils.cpp
 )
 
+# Add CUDA sources if available
+if(HAVE_CUDA)
+    list(APPEND AMCHECK_SOURCES src/cuda_accelerator.cpp)
+    set_property(SOURCE src/cuda_accelerator.cpp PROPERTY LANGUAGE CUDA)
+endif()
+
+add_executable(amcheck ${AMCHECK_SOURCES})
+
 target_include_directories(amcheck PRIVATE
     include
 )
@@ -152,6 +208,18 @@ target_include_directories(amcheck PRIVATE
 # Link Eigen3 if found
 if(TARGET Eigen3::Eigen)
     target_link_libraries(amcheck Eigen3::Eigen)
+endif()
+
+# Link CUDA if available
+if(HAVE_CUDA)
+    target_link_libraries(amcheck CUDA::cudart CUDA::curand)
+    set_target_properties(amcheck PROPERTIES 
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+    )
+    message(STATUS "✅ CUDA support enabled")
+else()
+    message(STATUS "ℹ️  Building without CUDA support")
 endif()
 
 # Link spglib if found

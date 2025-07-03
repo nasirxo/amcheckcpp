@@ -118,6 +118,9 @@ void print_spacegroup_info(const CrystalStructure& structure);
 void print_matrix(const Matrix3d& matrix, const std::string& name = "", int precision = 6);
 void print_hall_vector(const Matrix3d& antisymmetric_tensor);
 
+// GPU availability check
+bool is_gpu_available();
+
 // Spglib integration functions
 #ifdef HAVE_SPGLIB
 std::string get_spacegroup_name(const CrystalStructure& structure, double symprec = DEFAULT_TOLERANCE);

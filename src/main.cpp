@@ -10,7 +10,7 @@ namespace amcheck {
     void assign_spins_interactively(CrystalStructure& structure);
     void assign_spins_to_magnetic_atoms_only(CrystalStructure& structure);
     void assign_magnetic_moments_interactively(CrystalStructure& structure);
-    void search_all_spin_configurations(const CrystalStructure& structure, double tolerance, bool verbose);
+    void search_all_spin_configurations(const CrystalStructure& structure, double tolerance, bool verbose, bool use_gpu = true);
     void print_banner();
     void print_version();
     void print_usage(const std::string& program_name);
@@ -28,6 +28,8 @@ struct Arguments {
     bool show_version = false;
     bool ahc_mode = false;
     bool search_all_mode = false;
+    bool use_gpu = true;  // Default to GPU if available
+    bool force_cpu = false;
     double symprec = DEFAULT_TOLERANCE;
     double tolerance = DEFAULT_TOLERANCE;
 };
@@ -60,6 +62,12 @@ Arguments parse_arguments(int argc, char* argv[]) {
             } else {
                 throw std::invalid_argument("--tolerance requires a value");
             }
+        } else if (arg == "--gpu") {
+            args.use_gpu = true;
+            args.force_cpu = false;
+        } else if (arg == "--cpu" || arg == "--no-gpu") {
+            args.use_gpu = false;
+            args.force_cpu = true;
         } else if (arg[0] != '-') {
             args.files.push_back(arg);
         } else {
@@ -252,7 +260,7 @@ void process_search_all_analysis(const std::string& filename, const Arguments& a
         }
         
         // Start comprehensive search
-        search_all_spin_configurations(structure, args.tolerance, args.verbose);
+        search_all_spin_configurations(structure, args.tolerance, args.verbose, args.use_gpu && !args.force_cpu);
         
     } catch (const std::exception& e) {
         std::cerr << "ERROR: " << e.what() << "\n";
