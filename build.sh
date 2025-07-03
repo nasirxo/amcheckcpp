@@ -8,6 +8,7 @@ echo "Building AMCheck C++ (Standalone Version)..."
 BUILD_STATIC=ON
 BUILD_FULLY_STATIC=OFF
 ENABLE_CUDA=ON
+CMAKE_CMD="cmake"  # Default, will be updated based on system detection
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -75,17 +76,49 @@ echo "Checking dependencies for $OS..."
 case $OS in
     "linux")
         # Check for essential tools
-        if ! command -v cmake &> /dev/null; then
+        if ! command -v cmake &> /dev/null && ! command -v cmake3 &> /dev/null; then
             echo "CMake not found. Please install it:"
             echo "  Ubuntu/Debian: sudo apt-get install cmake"
-            echo "  Fedora: sudo dnf install cmake"
+            echo "  Fedora/CentOS Stream: sudo dnf install cmake"
+            echo "  CentOS 7: sudo yum install cmake3"
+            echo "  See INSTALL_CENTOS.md for detailed instructions"
             exit 1
+        fi
+        
+        # Check CMake version and suggest cmake3 for old systems
+        if command -v cmake &> /dev/null; then
+            CMAKE_VERSION=$(cmake --version | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            if [ -n "$CMAKE_VERSION" ]; then
+                # Compare version (simplified check for major.minor)
+                CMAKE_MAJOR=$(echo $CMAKE_VERSION | cut -d. -f1)
+                CMAKE_MINOR=$(echo $CMAKE_VERSION | cut -d. -f2)
+                if [ "$CMAKE_MAJOR" -lt 3 ] || ([ "$CMAKE_MAJOR" -eq 3 ] && [ "$CMAKE_MINOR" -lt 5 ]); then
+                    echo "⚠️  CMake version $CMAKE_VERSION is too old (need 3.5+)"
+                    if command -v cmake3 &> /dev/null; then
+                        echo "✅ Found cmake3, will use that instead"
+                        CMAKE_CMD="cmake3"
+                    else
+                        echo "❌ Please install cmake3: sudo yum install cmake3"
+                        echo "   Or see INSTALL_CENTOS.md for manual CMake installation"
+                        exit 1
+                    fi
+                else
+                    CMAKE_CMD="cmake"
+                fi
+            else
+                CMAKE_CMD="cmake"
+            fi
+        elif command -v cmake3 &> /dev/null; then
+            echo "✅ Using cmake3"
+            CMAKE_CMD="cmake3"
         fi
         
         if ! command -v g++ &> /dev/null; then
             echo "G++ not found. Please install it:"
             echo "  Ubuntu/Debian: sudo apt-get install build-essential"
-            echo "  Fedora: sudo dnf install gcc-c++"
+            echo "  Fedora/CentOS Stream: sudo dnf install gcc-c++"
+            echo "  CentOS 7: sudo yum install gcc-c++"
+            echo "  See INSTALL_CENTOS.md for detailed instructions"
             exit 1
         fi
         
@@ -93,7 +126,8 @@ case $OS in
         if ! pkg-config --exists eigen3 2>/dev/null && ! find /usr/include -name "Eigen" -type d 2>/dev/null | grep -q .; then
             echo "Eigen3 not found. Please install it:"
             echo "  Ubuntu/Debian: sudo apt-get install libeigen3-dev"
-            echo "  Fedora: sudo dnf install eigen3-devel"
+            echo "  Fedora/CentOS Stream: sudo dnf install eigen3-devel"
+            echo "  CentOS 7: Install from source (see INSTALL_CENTOS.md)"
             exit 1
         fi
         
@@ -123,6 +157,8 @@ case $OS in
             echo "To install spglib:"
             echo "  Ubuntu/Debian: sudo apt-get install libsymspg-dev"
             echo "  Fedora: sudo dnf install spglib-devel"
+            echo "  CentOS/RHEL: Install from source (see INSTALL_CENTOS.md)"
+            echo "  Or continue without it for basic functionality."
             echo "Continuing without spglib..."
         else
             echo "🎉 spglib found - full space group analysis available!"
@@ -145,7 +181,11 @@ case $OS in
 esac
 
 echo "Configuring with CMake for standalone executable..."
-cmake .. -DCMAKE_BUILD_TYPE=Release \
+
+# Use the detected cmake command (cmake or cmake3)
+echo "Using CMake command: $CMAKE_CMD"
+
+$CMAKE_CMD .. -DCMAKE_BUILD_TYPE=Release \
          -DBUILD_STATIC=$BUILD_STATIC \
          -DBUILD_FULLY_STATIC=$BUILD_FULLY_STATIC \
          -DENABLE_CUDA=$ENABLE_CUDA

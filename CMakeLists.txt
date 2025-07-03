@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.5)
 project(amcheck_cpp VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -28,27 +28,49 @@ if(ENABLE_CUDA)
         find_package(CUDA QUIET)
         
         if(CUDA_FOUND)
-            find_package(CUDAToolkit QUIET)
-            if(CUDAToolkit_FOUND)
+            # Check CUDA version compatibility - support CUDA 8.0+
+            if(CUDA_VERSION VERSION_LESS "8.0")
+                message(STATUS "CUDA ${CUDA_VERSION} is too old (requires 8.0+) - CUDA disabled")
+                set(HAVE_CUDA FALSE)
+            else()
+                # For CUDA 8.0-10.x, try to find CUDAToolkit, but continue without it if not found
+                find_package(CUDAToolkit QUIET)
+                
                 set(HAVE_CUDA TRUE)
                 add_definitions(-DHAVE_CUDA)
                 message(STATUS "CUDA found: ${CUDA_VERSION}")
-                message(STATUS "CUDA Toolkit found: ${CUDAToolkit_VERSION}")
                 
-                # Set CUDA flags
-                set(CMAKE_CUDA_STANDARD 17)
+                if(CUDAToolkit_FOUND)
+                    message(STATUS "CUDA Toolkit found: ${CUDAToolkit_VERSION}")
+                else()
+                    message(STATUS "CUDA Toolkit package not found, using basic CUDA support")
+                endif()
+                
+                # Set CUDA flags based on version - older CUDA versions need lower standards
+                if(CUDA_VERSION VERSION_GREATER_EQUAL "11.0")
+                    set(CMAKE_CUDA_STANDARD 17)
+                    message(STATUS "CUDA ${CUDA_VERSION} supports C++17")
+                elseif(CUDA_VERSION VERSION_GREATER_EQUAL "9.0")
+                    set(CMAKE_CUDA_STANDARD 14)
+                    message(STATUS "CUDA ${CUDA_VERSION} - using C++14 for CUDA code")
+                else()
+                    # CUDA 8.0 - use C++11
+                    set(CMAKE_CUDA_STANDARD 11)
+                    message(STATUS "CUDA ${CUDA_VERSION} is old - using C++11 for CUDA code")
+                endif()
                 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
                 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
                 
-                # CUDA architecture detection
+                # CUDA architecture detection - adjust for older CUDA
                 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-                    set(CMAKE_CUDA_ARCHITECTURES "50;61;75;86")  # Common architectures
-                    message(STATUS "Using default CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+                    if(CUDA_VERSION VERSION_GREATER_EQUAL "9.0")
+                        set(CMAKE_CUDA_ARCHITECTURES "50;61;75")  # Remove 86 for older CUDA
+                    else()
+                        set(CMAKE_CUDA_ARCHITECTURES "35;50;61")  # CUDA 8.0 compatible architectures
+                    endif()
+                    message(STATUS "Using CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
                 endif()
                 
-            else()
-                message(STATUS "CUDA found but CUDAToolkit not found - CUDA disabled")
-                set(HAVE_CUDA FALSE)
             endif()
         else()
             message(STATUS "CUDA compiler found but CUDA not found - CUDA disabled")
@@ -165,9 +187,42 @@ if(MSYS OR MINGW OR PLATFORM_WINDOWS)
     include_directories(${SPGLIB_INCLUDE_DIRS})
     
 else()
-    # For Linux, try standard detection
-    find_path(SPGLIB_INCLUDE_DIR NAMES spglib.h PATHS "/usr/include" "/usr/local/include")
-    find_library(SPGLIB_LIBRARY NAMES symspg spglib PATHS "/usr/lib/x86_64-linux-gnu" "/usr/lib" "/usr/lib64")
+    # For Linux, try standard detection with multiple search paths
+    find_path(SPGLIB_INCLUDE_DIR 
+        NAMES spglib.h 
+        PATHS 
+            "/usr/include"
+            "/usr/include/spglib"
+            "/usr/local/include"
+            "/usr/local/include/spglib"
+            "/opt/local/include"
+            "/opt/local/include/spglib"
+    )
+    
+    # Also check for the spglib subdirectory case
+    if(NOT SPGLIB_INCLUDE_DIR)
+        find_path(SPGLIB_INCLUDE_DIR 
+            NAMES spglib/spglib.h 
+            PATHS 
+                "/usr/include"
+                "/usr/local/include"
+                "/opt/local/include"
+        )
+        if(SPGLIB_INCLUDE_DIR)
+            # If found in subdirectory, include the parent directory
+            message(STATUS "Found spglib.h in subdirectory: ${SPGLIB_INCLUDE_DIR}/spglib/spglib.h")
+        endif()
+    endif()
+    
+    find_library(SPGLIB_LIBRARY 
+        NAMES symspg spglib libsymspg libspglib
+        PATHS 
+            "/usr/lib/x86_64-linux-gnu"
+            "/usr/lib"
+            "/usr/lib64"
+            "/usr/local/lib"
+            "/opt/local/lib"
+    )
     
     if(SPGLIB_INCLUDE_DIR AND SPGLIB_LIBRARY)
         set(SPGLIB_FOUND TRUE)
@@ -175,10 +230,14 @@ else()
         set(SPGLIB_LIBRARIES ${SPGLIB_LIBRARY})
         add_definitions(-DHAVE_SPGLIB)
         include_directories(${SPGLIB_INCLUDE_DIRS})
-        message(STATUS "✅ Found spglib on Linux: ${SPGLIB_INCLUDE_DIR}")
+        message(STATUS "✅ Found spglib on Linux:")
+        message(STATUS "  Header: ${SPGLIB_INCLUDE_DIR}")
+        message(STATUS "  Library: ${SPGLIB_LIBRARY}")
     else()
         set(SPGLIB_FOUND FALSE)
         message(STATUS "❌ spglib not found on Linux - building without space group detection")
+        message(STATUS "  Header search paths checked: /usr/include, /usr/include/spglib, /usr/local/include")
+        message(STATUS "  Library search paths checked: /usr/lib*, /usr/local/lib")
     endif()
 endif()
 
@@ -212,11 +271,25 @@ endif()
 
 # Link CUDA if available
 if(HAVE_CUDA)
-    target_link_libraries(amcheck CUDA::cudart CUDA::curand)
+    # Handle different CUDA linking methods based on version
+    if(CUDAToolkit_FOUND)
+        # Modern CUDA linking (CUDA 10.1+)
+        target_link_libraries(amcheck CUDA::cudart CUDA::curand)
+    else()
+        # Legacy CUDA linking (CUDA 8.0-10.0)
+        target_link_libraries(amcheck ${CUDA_LIBRARIES} ${CUDA_curand_LIBRARY})
+        target_include_directories(amcheck PRIVATE ${CUDA_INCLUDE_DIRS})
+    endif()
+    
     set_target_properties(amcheck PROPERTIES 
         CUDA_SEPARABLE_COMPILATION ON
-        CUDA_RESOLVE_DEVICE_SYMBOLS ON
     )
+    
+    # Only set CUDA_RESOLVE_DEVICE_SYMBOLS for newer CMake/CUDA versions
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
+        set_target_properties(amcheck PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+    endif()
+    
     message(STATUS "✅ CUDA support enabled")
 else()
     message(STATUS "ℹ️  Building without CUDA support")
