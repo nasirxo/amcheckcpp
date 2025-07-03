@@ -562,19 +562,14 @@ void search_all_spin_configurations(
     }
     
     // Only run CPU search if GPU didn't complete the task
-    if (!use_cuda || altermagnetic_configs.empty()) {
+    if (!use_cuda) {
 #endif
     
-    // CPU multithreaded search (fallback or primary method)
-    std::vector<SpinConfiguration> cpu_results;
-    
-    // Pre-declare variables to avoid goto issues
-    const size_t configs_per_thread = total_configurations / num_threads;
-    const size_t remaining_configs = total_configurations % num_threads;
-    
-    // Create worker function - only considers magnetic atoms
-    auto worker = [&](size_t start_config, size_t end_config) {
-        std::vector<SpinConfiguration> local_results;
+        // CPU multithreaded search (fallback or primary method)
+        
+        // Create worker function - only considers magnetic atoms
+        auto worker = [&](size_t start_config, size_t end_config) {
+            std::vector<SpinConfiguration> local_results;
         
         for (size_t config_id = start_config; config_id < end_config; ++config_id) {
             // Initialize all spins to NONE first
@@ -671,6 +666,8 @@ void search_all_spin_configurations(
     
     // Launch threads
     std::vector<std::thread> threads;
+    const size_t configs_per_thread = total_configurations / num_threads;
+    const size_t remaining_configs = total_configurations % num_threads;
     
     for (unsigned int t = 0; t < num_threads; ++t) {
         size_t start_config = t * configs_per_thread;

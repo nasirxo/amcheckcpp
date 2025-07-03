@@ -71,6 +71,13 @@ if(ENABLE_CUDA)
                     message(STATUS "Using CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
                 endif()
                 
+                # Set CUDA compilation flags separately from C++ flags
+                set(CMAKE_CUDA_FLAGS_RELEASE "-O3 --use_fast_math")
+                set(CMAKE_CUDA_FLAGS_DEBUG "-g -G")
+                
+                # Disable conflicting flags for CUDA
+                set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
+                
             endif()
         else()
             message(STATUS "CUDA compiler found but CUDA not found - CUDA disabled")
@@ -256,6 +263,12 @@ set(AMCHECK_SOURCES
 if(HAVE_CUDA)
     list(APPEND AMCHECK_SOURCES src/cuda_accelerator.cpp)
     set_property(SOURCE src/cuda_accelerator.cpp PROPERTY LANGUAGE CUDA)
+    
+    # Set CUDA-specific compilation flags to avoid conflicts
+    set_property(SOURCE src/cuda_accelerator.cpp PROPERTY COMPILE_OPTIONS 
+        $<$<COMPILE_LANGUAGE:CUDA>:-O3>
+        $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+    )
 endif()
 
 add_executable(amcheck ${AMCHECK_SOURCES})
