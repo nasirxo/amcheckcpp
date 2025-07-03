@@ -104,6 +104,7 @@ void search_all_spin_configurations(
 void print_matrix_with_labels(const Matrix3d& m, double tol = 1e-3);
 
 // Utility functions
+bool should_use_unicode();
 void print_banner();
 void print_version();
 void print_usage(const std::string& program_name);
