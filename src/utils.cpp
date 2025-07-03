@@ -1,6 +1,7 @@
 #include "amcheck.h"
 #ifdef HAVE_CUDA
 #include "cuda_accelerator.h"
+#include <cuda_runtime.h>
 #endif
 #include <iostream>
 #include <iomanip>
@@ -114,13 +115,26 @@ void print_version() {
 #endif
     std::cout << "\n";
     
-    // Show GPU information if available
+    // Show GPU information if available (with safe detection)
 #ifdef HAVE_CUDA
     try {
-        cuda::CudaSpinSearcher gpu_tester;
-        if (gpu_tester.initialize()) {
-            auto config = gpu_tester.get_config();
-            std::cout << "GPU: " << config.device_name << " (CC " << config.compute_capability << ")\n";
+        // Use the utility function instead of creating a full searcher object
+        if (cuda::is_cuda_available()) {
+            // Get basic device info without creating searcher object
+            int device_count = 0;
+            cudaError_t error = cudaGetDeviceCount(&device_count);
+            if (error == cudaSuccess && device_count > 0) {
+                cudaDeviceProp prop;
+                error = cudaGetDeviceProperties(&prop, 0);
+                if (error == cudaSuccess) {
+                    std::cout << "GPU: " << prop.name 
+                              << " (CC " << prop.major << "." << prop.minor << ")\n";
+                } else {
+                    std::cout << "GPU: Available but properties unavailable\n";
+                }
+            } else {
+                std::cout << "GPU: Not available\n";
+            }
         } else {
             std::cout << "GPU: Not available\n";
         }
@@ -138,8 +152,8 @@ void print_version() {
 bool is_gpu_available() {
 #ifdef HAVE_CUDA
     try {
-        cuda::CudaSpinSearcher tester;
-        return tester.initialize();
+        // Use simple utility function instead of creating full objects
+        return cuda::is_cuda_available();
     } catch (...) {
         return false;
     }

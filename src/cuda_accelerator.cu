@@ -133,20 +133,42 @@ CudaSpinSearcher::CudaSpinSearcher()
     : cuda_available_(false), device_id_(-1), d_positions_(nullptr), 
       d_symmetry_ops_(nullptr), d_equiv_atoms_(nullptr), 
       d_spin_configs_(nullptr), d_results_(nullptr), allocated_memory_(0) {
+#ifdef HAVE_CUDA
+    // Initialize CUDA configuration with safe defaults
+    config_.available = false;
+    config_.device_count = 0;
+    config_.memory_limit = 0;
+    config_.compute_capability = 0;
+    config_.device_name = "None";
+#endif
 }
 
 CudaSpinSearcher::~CudaSpinSearcher() {
-    cleanup_device_memory();
+#ifdef HAVE_CUDA
+    try {
+        // Only cleanup if CUDA was actually initialized
+        if (cuda_available_) {
+            cleanup_device_memory();
+        }
+    } catch (...) {
+        // Silently ignore cleanup errors during destruction
+    }
+#endif
 }
 
 bool CudaSpinSearcher::initialize() {
 #ifdef HAVE_CUDA
     try {
+        // Reset state first
+        cuda_available_ = false;
+        device_id_ = -1;
+        
         int device_count = 0;
         cudaError_t error = cudaGetDeviceCount(&device_count);
         
         if (error != cudaSuccess || device_count == 0) {
-            cuda_available_ = false;
+            std::cout << "⚠️  No CUDA devices found or CUDA driver error: " 
+                      << cudaGetErrorString(error) << "\n";
             return false;
         }
         
@@ -154,7 +176,7 @@ bool CudaSpinSearcher::initialize() {
         device_id_ = 0;
         error = cudaSetDevice(device_id_);
         if (error != cudaSuccess) {
-            cuda_available_ = false;
+            std::cout << "⚠️  Failed to set CUDA device: " << cudaGetErrorString(error) << "\n";
             return false;
         }
         
@@ -162,7 +184,7 @@ bool CudaSpinSearcher::initialize() {
         cudaDeviceProp prop;
         error = cudaGetDeviceProperties(&prop, device_id_);
         if (error != cudaSuccess) {
-            cuda_available_ = false;
+            std::cout << "⚠️  Failed to get device properties: " << cudaGetErrorString(error) << "\n";
             return false;
         }
         
@@ -171,20 +193,25 @@ bool CudaSpinSearcher::initialize() {
         if (compute_capability < 20) {
             std::cout << "⚠️  GPU compute capability " << prop.major << "." << prop.minor 
                       << " is too old (requires 2.0+)\n";
-            cuda_available_ = false;
             return false;
         }
         
-        // Test basic CUDA functionality
+        // Test basic CUDA functionality with smaller allocation
         void* test_ptr = nullptr;
-        error = cudaMalloc(&test_ptr, 1024);
+        error = cudaMalloc(&test_ptr, 1024);  // Small test allocation
         if (error != cudaSuccess) {
             std::cout << "⚠️  GPU memory allocation test failed: " << cudaGetErrorString(error) << "\n";
-            cuda_available_ = false;
             return false;
         }
-        cudaFree(test_ptr);
         
+        // Immediately free test allocation
+        error = cudaFree(test_ptr);
+        if (error != cudaSuccess) {
+            std::cout << "⚠️  GPU memory free test failed: " << cudaGetErrorString(error) << "\n";
+            return false;
+        }
+        
+        // Set configuration
         config_.available = true;
         config_.device_count = device_count;
         config_.memory_limit = prop.totalGlobalMem;
@@ -193,6 +220,7 @@ bool CudaSpinSearcher::initialize() {
         
         cuda_available_ = true;
         
+        // Only print success message, don't call any other CUDA functions
         std::cout << "🚀 CUDA GPU Acceleration Enabled!\n";
         std::cout << "GPU: " << config_.device_name << "\n";
         std::cout << "Memory: " << (config_.memory_limit / (1024*1024)) << " MB\n";
@@ -383,6 +411,12 @@ std::vector<bool> CudaSpinSearcher::check_altermagnetism_batch(
 void CudaSpinSearcher::cleanup_device_memory() {
 #ifdef HAVE_CUDA
     try {
+        // Only cleanup if we actually have CUDA available and pointers are valid
+        if (!cuda_available_) {
+            return;
+        }
+        
+        // Free device memory safely with null checks
         if (d_positions_) { 
             cudaFree(d_positions_); 
             d_positions_ = nullptr; 
@@ -403,15 +437,21 @@ void CudaSpinSearcher::cleanup_device_memory() {
             cudaFree(d_results_); 
             d_results_ = nullptr; 
         }
+        
         allocated_memory_ = 0;
         
-        // Reset CUDA device to clean up any remaining state
-        if (cuda_available_) {
-            cudaDeviceReset();
-        }
+        // Don't call cudaDeviceReset() in destructor as it can cause issues
+        // with other CUDA contexts in the same process
+        
     } catch (...) {
         // Silently ignore cleanup errors
         allocated_memory_ = 0;
+        // Reset pointers to prevent double-free
+        d_positions_ = nullptr;
+        d_symmetry_ops_ = nullptr;
+        d_equiv_atoms_ = nullptr;
+        d_spin_configs_ = nullptr;
+        d_results_ = nullptr;
     }
 #endif
 }
@@ -527,6 +567,7 @@ void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structur
 bool is_cuda_available() {
 #ifdef HAVE_CUDA
     try {
+        // Simple check without any memory allocation
         int device_count = 0;
         cudaError_t error = cudaGetDeviceCount(&device_count);
         
@@ -534,7 +575,7 @@ bool is_cuda_available() {
             return false;
         }
         
-        // Test basic functionality on the first device
+        // Basic device properties check
         cudaDeviceProp prop;
         error = cudaGetDeviceProperties(&prop, 0);
         if (error != cudaSuccess) {
@@ -547,6 +588,7 @@ bool is_cuda_available() {
         }
         
         return true;
+        
     } catch (...) {
         return false;
     }
