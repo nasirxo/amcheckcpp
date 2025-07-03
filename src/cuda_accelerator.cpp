@@ -15,7 +15,7 @@ __global__ void check_altermagnetism_kernel(
     const double* symmetry_ops,
     const int* equiv_atoms,
     const int* spin_configs,
-    bool* results,
+    char* results,  // Use char instead of bool
     int num_atoms,
     int num_symops,
     int num_configs,
@@ -27,7 +27,7 @@ __global__ void check_altermagnetism_kernel(
     
     // Each thread processes one spin configuration
     const int* spins = &spin_configs[config_idx * num_atoms];
-    bool is_altermagnetic = false;
+    char is_altermagnetic = 0;  // Use char instead of bool
     
     // Simplified altermagnet check on GPU
     // This is a GPU-optimized version of the CPU algorithm
@@ -41,7 +41,7 @@ __global__ void check_altermagnetism_kernel(
     
     // Basic balance check
     if (n_up != n_down) {
-        results[config_idx] = false;
+        results[config_idx] = 0;  // false
         return;
     }
     
@@ -91,7 +91,7 @@ __global__ void check_altermagnetism_kernel(
     
     // Simplified altermagnet criterion
     int n_magnetic = 2 * n_up;
-    is_altermagnetic = (sym_related_pairs >= n_magnetic) && (it_related_pairs < n_magnetic);
+    is_altermagnetic = (sym_related_pairs >= n_magnetic) && (it_related_pairs < n_magnetic) ? 1 : 0;
     
     results[config_idx] = is_altermagnetic;
 }
@@ -231,7 +231,7 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     
     // Allocate host memory for results
     std::vector<int> h_spin_configs(total_configurations * num_atoms);
-    std::vector<bool> h_results(total_configurations);
+    std::vector<char> h_results(total_configurations);  // Use char instead of bool
     std::vector<int> h_magnetic_indices(magnetic_indices.begin(), magnetic_indices.end());
     
     // Copy magnetic indices to device
@@ -275,15 +275,15 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     }
     
     // Copy results back to host
-    cudaMemcpy(static_cast<void*>(h_results.data()), static_cast<void*>(d_results_), 
-               total_configurations * sizeof(bool), cudaMemcpyDeviceToHost);
-    cudaMemcpy(static_cast<void*>(h_spin_configs.data()), static_cast<void*>(d_spin_configs_), 
+    cudaMemcpy(h_results.data(), d_results_, 
+               total_configurations * sizeof(char), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_spin_configs.data(), d_spin_configs_, 
                total_configurations * num_atoms * sizeof(int), cudaMemcpyDeviceToHost);
     
     // Process results and create SpinConfiguration objects
     size_t altermagnetic_count = 0;
     for (size_t i = 0; i < total_configurations; i++) {
-        if (h_results[i]) {
+        if (h_results[i] != 0) {  // Convert char to bool
             SpinConfiguration config;
             config.configuration_id = i;
             config.is_altermagnetic = true;
@@ -370,7 +370,7 @@ bool CudaSpinSearcher::allocate_device_memory(size_t required_memory) {
     if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_symmetry_ops_), 1000 * 12 * sizeof(double)); // Max 1000 symops
     if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_equiv_atoms_), num_atoms * sizeof(int));
     if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_spin_configs_), num_configs * num_atoms * sizeof(int));
-    if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_results_), num_configs * sizeof(bool));
+    if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_results_), num_configs * sizeof(char));
     
     if (error != cudaSuccess) {
         cleanup_device_memory();

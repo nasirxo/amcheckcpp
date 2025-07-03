@@ -58,7 +58,7 @@ private:
     double* d_symmetry_ops_;
     int* d_equiv_atoms_;
     int* d_spin_configs_;
-    bool* d_results_;
+    char* d_results_;  // Use char instead of bool
     
     size_t allocated_memory_;
     
