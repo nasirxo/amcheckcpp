@@ -553,9 +553,6 @@ void search_all_spin_configurations(
             std::cout << "GPU search completed: " << total_configurations << "/" << total_configurations 
                       << " configurations processed\n\n";
             
-            // Skip CPU search since GPU completed everything
-            goto skip_cpu_search;
-            
         } catch (const std::exception& e) {
             std::cout << "GPU search failed: " << e.what() << "\n";
             std::cout << "Falling back to CPU search...\n";
@@ -563,11 +560,17 @@ void search_all_spin_configurations(
             acceleration_method = "CPU (GPU fallback)";
         }
     }
+    
+    // Only run CPU search if GPU didn't complete the task
+    if (!use_cuda || altermagnetic_configs.empty()) {
 #endif
     
     // CPU multithreaded search (fallback or primary method)
     std::vector<SpinConfiguration> cpu_results;
-    std::atomic<size_t> cpu_completed_configs(0);
+    
+    // Pre-declare variables to avoid goto issues
+    const size_t configs_per_thread = total_configurations / num_threads;
+    const size_t remaining_configs = total_configurations % num_threads;
     
     // Create worker function - only considers magnetic atoms
     auto worker = [&](size_t start_config, size_t end_config) {
@@ -668,8 +671,6 @@ void search_all_spin_configurations(
     
     // Launch threads
     std::vector<std::thread> threads;
-    const size_t configs_per_thread = total_configurations / num_threads;
-    const size_t remaining_configs = total_configurations % num_threads;
     
     for (unsigned int t = 0; t < num_threads; ++t) {
         size_t start_config = t * configs_per_thread;
@@ -696,7 +697,10 @@ void search_all_spin_configurations(
               << total_configurations << ") - Found: " 
               << altermagnetic_count << " altermagnetic configs\n\n";
     
-skip_cpu_search:
+#ifdef HAVE_CUDA
+    } // End of CPU search conditional block
+#endif
+    
     // Display results
     std::cout << "=======================================================================\n";
     std::cout << "                           SEARCH RESULTS\n";

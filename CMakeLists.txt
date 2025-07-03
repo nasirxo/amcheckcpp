@@ -338,7 +338,11 @@ if(MSVC)
     # Static linking for MSVC
     set_property(TARGET amcheck PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 else()
-    target_compile_options(amcheck PRIVATE -Wall -Wextra -Wpedantic -O2)
+    # Set different compile options for C++ and CUDA
+    target_compile_options(amcheck PRIVATE 
+        $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic -O2>
+        $<$<COMPILE_LANGUAGE:CUDA>:-O2>
+    )
     
     # Enable static linking for standalone binaries
     if(MSYS OR MINGW OR PLATFORM_WINDOWS)
