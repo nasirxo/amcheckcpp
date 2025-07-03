@@ -4,10 +4,6 @@
 #include <string>
 #include <stdexcept>
 
-#ifdef WITH_CUDA
-#include "cuda_accelerator.h"
-#endif
-
 // Forward declarations for functions in other files
 namespace amcheck {
     void analyze_symmetry(CrystalStructure& structure, double tolerance = DEFAULT_TOLERANCE);
@@ -264,25 +260,6 @@ void process_search_all_analysis(const std::string& filename, const Arguments& a
         }
         
         // Start comprehensive search
-#ifdef WITH_CUDA
-        if (args.use_gpu && !args.force_cpu) {
-            // Check if GPU has enough memory before proceeding
-            std::vector<size_t> magnetic_indices = get_magnetic_atom_indices(structure);
-            size_t num_magnetic_atoms = magnetic_indices.size();
-            size_t num_configs = 1ULL << num_magnetic_atoms; // 2^N
-
-            size_t required_mem = amcheck::estimate_memory_requirement(structure.atoms.size(), num_configs);
-            size_t available_mem = amcheck::get_total_gpu_memory();
-
-            if (required_mem > available_mem) {
-                std::cout << "\nWARNING: Estimated GPU memory required (" << required_mem / (1024 * 1024) 
-                          << " MB) exceeds available GPU memory (" << available_mem / (1024 * 1024) 
-                          << " MB).\n";
-                std::cout << "Falling back to CPU-based search. This may be slow.\n";
-                args.use_gpu = false; // Force CPU
-            }
-        }
-#endif
         search_all_spin_configurations(structure, args.tolerance, args.verbose, args.use_gpu && !args.force_cpu);
         
     } catch (const std::exception& e) {

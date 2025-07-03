@@ -4,6 +4,12 @@ project(amcheck_cpp VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Ensure proper C++ ABI settings for compatibility
+if(CMAKE_COMPILER_IS_GNUCXX)
+    # Force the new C++11 ABI for std::string and std::list
+    add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
+endif()
+
 # Platform detection
 if(WIN32)
     set(PLATFORM_WINDOWS TRUE)
@@ -46,7 +52,7 @@ if(ENABLE_CUDA)
                     message(STATUS "CUDA Toolkit package not found, using basic CUDA support")
                 endif()
                 
-                # Set CUDA flags based on version - older CUDA versions need lower standards
+                # Set CUDA flags based on version - ensure ABI compatibility
                 if(CUDA_VERSION VERSION_GREATER_EQUAL "11.0")
                     set(CMAKE_CUDA_STANDARD 17)
                     message(STATUS "CUDA ${CUDA_VERSION} supports C++17")
@@ -54,9 +60,13 @@ if(ENABLE_CUDA)
                     set(CMAKE_CUDA_STANDARD 14)
                     message(STATUS "CUDA ${CUDA_VERSION} - using C++14 for CUDA code")
                 else()
-                    # CUDA 8.0 - use C++11
+                    # CUDA 8.0 - use C++11, but ensure ABI compatibility
                     set(CMAKE_CUDA_STANDARD 11)
-                    message(STATUS "CUDA ${CUDA_VERSION} is old - using C++11 for CUDA code")
+                    # For older CUDA with GCC, ensure ABI compatibility
+                    if(CMAKE_COMPILER_IS_GNUCXX)
+                        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=1")
+                    endif()
+                    message(STATUS "CUDA ${CUDA_VERSION} is old - using C++11 for CUDA code with ABI compatibility")
                 endif()
                 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
                 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
@@ -277,6 +287,11 @@ target_include_directories(amcheck PRIVATE
     include
 )
 
+# Ensure proper C++ standard library linking
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_libraries(amcheck stdc++)
+endif()
+
 # Link Eigen3 if found
 if(TARGET Eigen3::Eigen)
     target_link_libraries(amcheck Eigen3::Eigen)
@@ -358,11 +373,11 @@ else()
     
     # Enable static linking for standalone binaries
     if(MSYS OR MINGW OR PLATFORM_WINDOWS)
-        # MSYS2/MinGW static linking
+        # MSYS2/MinGW static linking - don't use -static flag which breaks everything
         target_compile_options(amcheck PRIVATE -static-libgcc -static-libstdc++)
-        target_link_options(amcheck PRIVATE -static -static-libgcc -static-libstdc++)
-        # Link static runtime libraries
-        target_link_libraries(amcheck -static)
+        target_link_options(amcheck PRIVATE -static-libgcc -static-libstdc++)
+        # Ensure proper C++ standard library linking
+        target_link_libraries(amcheck stdc++)
     elseif(PLATFORM_LINUX)
         # Linux static linking (optional, can be enabled with BUILD_STATIC)
         option(BUILD_STATIC "Build static executable" ON)
