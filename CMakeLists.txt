@@ -96,126 +96,42 @@ else()
     find_package(Eigen3 REQUIRED)
 endif()
 
-# spglib detection
-message(STATUS "Searching for spglib...")
+# Manual spglib linking for MSYS2
+message(STATUS "Setting up manual spglib linking...")
 
-# First try pkg-config approach
-if(PkgConfig_FOUND)
-    pkg_check_modules(SPGLIB spglib)
-    if(NOT SPGLIB_FOUND)
-        pkg_check_modules(SPGLIB symspg)
-    endif()
+# Force spglib integration by directly linking known files
+if(MSYS OR MINGW OR PLATFORM_WINDOWS)
+    # We know spglib exists in clang64, just use it directly
+    set(SPGLIB_FOUND TRUE)
+    set(SPGLIB_INCLUDE_DIRS "/clang64/include")
+    set(SPGLIB_LIBRARIES "/clang64/lib/libsymspg.dll.a")
+    set(SPGLIB_LIBRARY_DIRS "/clang64/lib")
+    set(SPGLIB_DLL_PATH "/clang64/bin/libsymspg-2.dll")
     
-    if(SPGLIB_FOUND)
-        message(STATUS "Found spglib via pkg-config")
-        message(STATUS "  Include dirs: ${SPGLIB_INCLUDE_DIRS}")
-        message(STATUS "  Library dirs: ${SPGLIB_LIBRARY_DIRS}")
-        message(STATUS "  Libraries: ${SPGLIB_LIBRARIES}")
-        
-        # Set up the library directories for linking
-        if(SPGLIB_LIBRARY_DIRS)
-            link_directories(${SPGLIB_LIBRARY_DIRS})
-        endif()
-    endif()
-endif()
-
-if(NOT SPGLIB_FOUND)
-    # Manual search for spglib
-    find_path(SPGLIB_INCLUDE_DIR 
-        NAMES spglib.h
-        PATHS 
-            "$ENV{MINGW_PREFIX}/include"
-            "/usr/include" 
-            "/usr/local/include"
-            "/opt/homebrew/include"
-    )
+    message(STATUS "✅ Using direct spglib linking (MSYS2)")
+    message(STATUS "  Header: ${SPGLIB_INCLUDE_DIRS}/spglib.h")
+    message(STATUS "  Library: ${SPGLIB_LIBRARIES}")
+    message(STATUS "  DLL: ${SPGLIB_DLL_PATH}")
     
-    # Try multiple library name variations and check actual library paths
-    find_library(SPGLIB_LIBRARY 
-        NAMES 
-            # Correct library names in order of preference  
-            symspg          # Primary name used by libsymspg packages
-            spglib          # Alternative name used by some distributions
-            spg             # Short form
-        PATHS 
-            "/usr/lib/x86_64-linux-gnu"   # Primary Ubuntu/Debian location
-            "/usr/lib/aarch64-linux-gnu"  # ARM64 Ubuntu/Debian
-            "/usr/lib"                    # Generic location
-            "/usr/lib64"                  # 64-bit systems
-            "/usr/local/lib"              # Local installations
-            "$ENV{MINGW_PREFIX}/lib"      # MSYS2
-            "/opt/homebrew/lib"           # macOS Homebrew
-    )
+    # Enable spglib compilation
+    add_definitions(-DHAVE_SPGLIB)
+    include_directories(${SPGLIB_INCLUDE_DIRS})
+    
+else()
+    # For Linux, try standard detection
+    find_path(SPGLIB_INCLUDE_DIR NAMES spglib.h PATHS "/usr/include" "/usr/local/include")
+    find_library(SPGLIB_LIBRARY NAMES symspg spglib PATHS "/usr/lib/x86_64-linux-gnu" "/usr/lib" "/usr/lib64")
     
     if(SPGLIB_INCLUDE_DIR AND SPGLIB_LIBRARY)
         set(SPGLIB_FOUND TRUE)
         set(SPGLIB_INCLUDE_DIRS ${SPGLIB_INCLUDE_DIR})
         set(SPGLIB_LIBRARIES ${SPGLIB_LIBRARY})
-        message(STATUS "Found spglib manually: ${SPGLIB_INCLUDE_DIR}")
-        message(STATUS "Found spglib library: ${SPGLIB_LIBRARY}")
-    elseif(SPGLIB_INCLUDE_DIR)
-        # Header found but no library - this is the most common case
-        message(STATUS "Found spglib header: ${SPGLIB_INCLUDE_DIR}")
-        message(STATUS "But library not found. Trying to use pkg-config libs...")
-        
-        # Try to get library info from pkg-config even if SPGLIB wasn't found
-        execute_process(
-            COMMAND pkg-config --libs spglib
-            OUTPUT_VARIABLE PKG_SPGLIB_LIBS
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-        
-        execute_process(
-            COMMAND pkg-config --libs-only-L spglib
-            OUTPUT_VARIABLE PKG_SPGLIB_LIBDIRS
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-        
-        if(PKG_SPGLIB_LIBS)
-            set(SPGLIB_FOUND TRUE)
-            set(SPGLIB_INCLUDE_DIRS ${SPGLIB_INCLUDE_DIR})
-            # Extract library name from pkg-config output (e.g., "-lsymspg" -> "symspg")
-            string(REPLACE "-l" "" SPGLIB_LIBRARIES "${PKG_SPGLIB_LIBS}")
-            message(STATUS "Using pkg-config library flags: ${PKG_SPGLIB_LIBS}")
-            
-            # Add library directories if found
-            if(PKG_SPGLIB_LIBDIRS)
-                string(REPLACE "-L" "" SPGLIB_LIBRARY_DIRS "${PKG_SPGLIB_LIBDIRS}")
-                link_directories(${SPGLIB_LIBRARY_DIRS})
-                message(STATUS "Using pkg-config library dirs: ${PKG_SPGLIB_LIBDIRS}")
-            endif()
-        else()
-            # As a last resort, try the known library path
-            set(SPGLIB_FOUND TRUE)
-            set(SPGLIB_INCLUDE_DIRS ${SPGLIB_INCLUDE_DIR})
-            set(SPGLIB_LIBRARIES "symspg")  # Standard name
-            # Add common library directory
-            link_directories("/usr/lib/x86_64-linux-gnu")
-            message(STATUS "Using fallback library linking")
-            message(WARNING "Library not found via standard methods, using fallback approach")
-            message(WARNING "If linking fails, install: sudo apt-get install libsymspg-dev")
-        endif()
-    endif()
-endif()
-
-if(SPGLIB_FOUND)
-    message(STATUS "✅ spglib found and will be linked")
-    add_definitions(-DHAVE_SPGLIB)
-    include_directories(${SPGLIB_INCLUDE_DIRS})
-else()
-    message(WARNING "spglib not found. Space group detection will be limited.")
-    message(STATUS "To install spglib:")
-    if(MSYS OR MINGW)
-        message(STATUS "  MSYS2: pacman -S mingw-w64-x86_64-spglib")
-    elseif(PLATFORM_LINUX)
-        message(STATUS "  Ubuntu/Debian: sudo apt-get install libspglib-dev libspglib1")
-        message(STATUS "                  or: sudo apt-get install libsymspg-dev")
-        message(STATUS "  Fedora: sudo dnf install spglib-devel")
-        message(STATUS "  Build from source: https://github.com/spglib/spglib")
-    elseif(PLATFORM_MACOS)
-        message(STATUS "  macOS: brew install spglib")
+        add_definitions(-DHAVE_SPGLIB)
+        include_directories(${SPGLIB_INCLUDE_DIRS})
+        message(STATUS "✅ Found spglib on Linux: ${SPGLIB_INCLUDE_DIR}")
+    else()
+        set(SPGLIB_FOUND FALSE)
+        message(STATUS "❌ spglib not found on Linux - building without space group detection")
     endif()
 endif()
 
@@ -240,26 +156,36 @@ endif()
 
 # Link spglib if found
 if(SPGLIB_FOUND)
-    # Add include directories
-    if(SPGLIB_INCLUDE_DIRS)
-        target_include_directories(amcheck PRIVATE ${SPGLIB_INCLUDE_DIRS})
-    endif()
+    # Link the spglib library
+    target_link_libraries(amcheck ${SPGLIB_LIBRARIES})
+    message(STATUS "✅ Linking amcheck with spglib: ${SPGLIB_LIBRARIES}")
     
-    # Add library directories if specified
-    if(SPGLIB_LIBRARY_DIRS)
-        target_link_directories(amcheck PRIVATE ${SPGLIB_LIBRARY_DIRS})
+    # For MSYS2, copy the required DLLs to the output directory for standalone execution
+    if(MSYS OR MINGW OR PLATFORM_WINDOWS)
+        # Copy spglib DLL
+        if(EXISTS "/clang64/bin/libsymspg-2.dll")
+            add_custom_command(TARGET amcheck POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "/clang64/bin/libsymspg-2.dll"
+                    "$<TARGET_FILE_DIR:amcheck>/libsymspg-2.dll"
+                COMMENT "Copying spglib DLL for standalone execution"
+            )
+            message(STATUS "✅ Will copy spglib DLL: libsymspg-2.dll")
+        endif()
+        
+        # Copy OpenMP DLL (required by spglib)
+        if(EXISTS "/clang64/bin/libomp.dll")
+            add_custom_command(TARGET amcheck POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "/clang64/bin/libomp.dll"
+                    "$<TARGET_FILE_DIR:amcheck>/libomp.dll"
+                COMMENT "Copying OpenMP DLL for spglib dependency"
+            )
+            message(STATUS "✅ Will copy OpenMP DLL: libomp.dll")
+        endif()
     endif()
-    
-    # Handle different linking strategies based on build type
-    if(BUILD_FULLY_STATIC AND SPGLIB_STATIC_LIBRARY)
-        # Use static library if available
-        target_link_libraries(amcheck ${SPGLIB_STATIC_LIBRARY})
-        message(STATUS "✅ Linking amcheck with static spglib: ${SPGLIB_STATIC_LIBRARY}")
-    else()
-        # Use dynamic library (standard case)
-        target_link_libraries(amcheck ${SPGLIB_LIBRARIES})
-        message(STATUS "✅ Linking amcheck with dynamic spglib: ${SPGLIB_LIBRARIES}")
-    endif()
+else()
+    message(STATUS "❌ Building without spglib integration")
 endif()
 
 # Link threading library

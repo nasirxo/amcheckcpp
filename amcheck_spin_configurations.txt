@@ -1,0 +1,31 @@
+# AMCheck C++ - Altermagnetic Spin Configurations
+# Generated on: Jul  4 2025 00:35:33
+# Structure: 6 atoms
+# Total configurations tested: 64
+# Altermagnetic configurations found: 12
+# Tolerance: 0.001
+#
+# Atomic structure:
+# Atom  1: Fe at ( 0.500000,  0.500000,  0.500000)
+# Atom  2: Fe at ( 0.000000,  0.000000,  0.000000)
+# Atom  3:  F at ( 0.698434,  0.698434,  0.000000)
+# Atom  4:  F at ( 0.198434,  0.801566,  0.500000)
+# Atom  5:  F at ( 0.301566,  0.301566,  0.000000)
+# Atom  6:  F at ( 0.801566,  0.198434,  0.500000)
+#
+# Format: ConfigID | Spin_Pattern | Detailed_Assignment
+#         u = up, d = down, n = none
+#
+
+      13 | d u d d u u | Fe1:d Fe2:u F3:d F4:d F5:u F6:u
+      14 | u d d d u u | Fe1:u Fe2:d F3:d F4:d F5:u F6:u
+      21 | d u d u d u | Fe1:d Fe2:u F3:d F4:u F5:d F6:u
+      22 | u d d u d u | Fe1:u Fe2:d F3:d F4:u F5:d F6:u
+      25 | d u u d d u | Fe1:d Fe2:u F3:u F4:d F5:d F6:u
+      26 | u d u d d u | Fe1:u Fe2:d F3:u F4:d F5:d F6:u
+      37 | d u d u u d | Fe1:d Fe2:u F3:d F4:u F5:u F6:d
+      38 | u d d u u d | Fe1:u Fe2:d F3:d F4:u F5:u F6:d
+      41 | d u u d u d | Fe1:d Fe2:u F3:u F4:d F5:u F6:d
+      42 | u d u d u d | Fe1:u Fe2:d F3:u F4:d F5:u F6:d
+      49 | d u u u d d | Fe1:d Fe2:u F3:u F4:u F5:d F6:d
+      50 | u d u u d d | Fe1:u Fe2:d F3:u F4:u F5:d F6:d
