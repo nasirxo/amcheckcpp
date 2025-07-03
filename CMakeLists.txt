@@ -72,11 +72,18 @@ if(ENABLE_CUDA)
                 endif()
                 
                 # Set CUDA compilation flags separately from C++ flags
-                set(CMAKE_CUDA_FLAGS_RELEASE "-O3 --use_fast_math")
+                if(CUDA_VERSION VERSION_GREATER_EQUAL "9.0")
+                    set(CMAKE_CUDA_FLAGS_RELEASE "-O3 --use_fast_math")
+                else()
+                    # CUDA 8.0 - simpler optimization flags
+                    set(CMAKE_CUDA_FLAGS_RELEASE "-O2")
+                endif()
                 set(CMAKE_CUDA_FLAGS_DEBUG "-g -G")
                 
-                # Disable conflicting flags for CUDA
-                set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
+                # Add relaxed constexpr for all CUDA versions that support it
+                if(CUDA_VERSION VERSION_GREATER_EQUAL "9.0")
+                    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
+                endif()
                 
             endif()
         else()
@@ -264,11 +271,7 @@ if(HAVE_CUDA)
     list(APPEND AMCHECK_SOURCES src/cuda_accelerator.cpp)
     set_property(SOURCE src/cuda_accelerator.cpp PROPERTY LANGUAGE CUDA)
     
-    # Set CUDA-specific compilation flags to avoid conflicts
-    set_property(SOURCE src/cuda_accelerator.cpp PROPERTY COMPILE_OPTIONS 
-        $<$<COMPILE_LANGUAGE:CUDA>:-O3>
-        $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
-    )
+    # Set CUDA-specific compilation flags to avoid conflicts - removed duplicate optimization flags
 endif()
 
 add_executable(amcheck ${AMCHECK_SOURCES})
@@ -351,10 +354,9 @@ if(MSVC)
     # Static linking for MSVC
     set_property(TARGET amcheck PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 else()
-    # Set different compile options for C++ and CUDA
+    # Set different compile options for C++ only (CUDA flags set globally above)
     target_compile_options(amcheck PRIVATE 
         $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic -O2>
-        $<$<COMPILE_LANGUAGE:CUDA>:-O2>
     )
     
     # Enable static linking for standalone binaries
