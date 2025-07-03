@@ -459,7 +459,7 @@ size_t get_optimal_block_size() {
 size_t estimate_memory_requirement(size_t num_atoms, size_t num_configs) {
     size_t positions_mem = num_atoms * 3 * sizeof(double);
     size_t configs_mem = num_configs * num_atoms * sizeof(int);
-    size_t results_mem = num_configs * sizeof(bool);
+    size_t results_mem = num_configs * sizeof(char); // Use char for CUDA compatibility
     size_t symops_mem = 1000 * 12 * sizeof(double); // Conservative estimate
     size_t equiv_atoms_mem = num_atoms * sizeof(int);
     
