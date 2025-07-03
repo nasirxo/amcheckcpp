@@ -8,6 +8,7 @@
 namespace amcheck {
     void analyze_symmetry(CrystalStructure& structure, double tolerance = DEFAULT_TOLERANCE);
     void assign_spins_interactively(CrystalStructure& structure);
+    void assign_spins_to_magnetic_atoms_only(CrystalStructure& structure);
     void assign_magnetic_moments_interactively(CrystalStructure& structure);
     void search_all_spin_configurations(const CrystalStructure& structure, double tolerance, bool verbose);
     void print_banner();
@@ -101,9 +102,9 @@ void process_altermagnet_analysis(const std::string& filename, const Arguments& 
                   << aux_filename << "\n";
         structure.write_vasp_file(aux_filename);
         
-        // Get spins from user input
+        // Get spins from user input (magnetic atoms only)
         std::cout << "\nSetting up magnetic configuration...\n";
-        assign_spins_interactively(structure);
+        assign_spins_to_magnetic_atoms_only(structure);
         
         // Extract data for altermagnet analysis
         std::vector<Vector3d> positions = structure.get_all_scaled_positions();

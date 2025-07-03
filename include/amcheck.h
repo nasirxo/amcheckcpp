@@ -88,6 +88,12 @@ Matrix3d symmetrized_conductivity_tensor(
 std::string spin_to_string(SpinType spin);
 SpinType string_to_spin(const std::string& s);
 
+// Magnetic atom detection and filtering
+bool is_magnetic_element(const std::string& chemical_symbol);
+std::vector<size_t> get_magnetic_atom_indices(const CrystalStructure& structure);
+std::vector<size_t> get_magnetic_orbit_indices(const CrystalStructure& structure);
+void assign_spins_to_magnetic_atoms_only(CrystalStructure& structure);
+
 // Multithreaded spin configuration search
 struct SpinConfiguration {
     std::vector<SpinType> spins;

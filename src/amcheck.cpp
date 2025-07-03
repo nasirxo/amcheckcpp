@@ -411,14 +411,30 @@ void search_all_spin_configurations(
     bool verbose
 ) {
     const size_t num_atoms = structure.atoms.size();
-    const size_t total_configurations = static_cast<size_t>(std::pow(3, num_atoms));
+    
+    // Get indices of magnetic atoms only
+    std::vector<size_t> magnetic_indices = get_magnetic_atom_indices(structure);
+    const size_t num_magnetic_atoms = magnetic_indices.size();
+    
+    if (num_magnetic_atoms == 0) {
+        std::cout << "\n=======================================================================\n";
+        std::cout << "                  NO MAGNETIC ATOMS DETECTED\n";
+        std::cout << "=======================================================================\n";
+        std::cout << "Structure contains no potentially magnetic atoms.\n";
+        std::cout << "Altermagnet analysis requires magnetic atoms.\n";
+        std::cout << "=======================================================================\n\n";
+        return;
+    }
+    
+    // Calculate configurations based on magnetic atoms only (UP/DOWN, skip NONE)
+    const size_t total_configurations = static_cast<size_t>(std::pow(2, num_magnetic_atoms));
     const unsigned int num_threads = std::thread::hardware_concurrency();
     
     // Generate output filename based on input structure
     std::string output_filename = "amcheck_spin_configurations.txt";
     
-    if (num_atoms > 20) {
-        std::cout << "WARNING: Structure has " << num_atoms << " atoms.\n";
+    if (num_magnetic_atoms > 20) {
+        std::cout << "WARNING: Structure has " << num_magnetic_atoms << " magnetic atoms.\n";
         std::cout << "This will generate " << total_configurations << " configurations.\n";
         std::cout << "This may take a very long time. Continue? (y/N): ";
         std::string response;
@@ -431,8 +447,9 @@ void search_all_spin_configurations(
     
     std::cout << "\n=======================================================================\n";
     std::cout << "                  MULTITHREADED SPIN CONFIGURATION SEARCH\n";
+    std::cout << "                           (MAGNETIC ATOMS ONLY)\n";
     std::cout << "=======================================================================\n";
-    std::cout << "Structure: " << num_atoms << " atoms\n";
+    std::cout << "Structure: " << num_atoms << " total atoms (" << num_magnetic_atoms << " magnetic)\n";
     std::cout << "Total configurations to test: " << total_configurations << "\n";
     std::cout << "CPU cores available: " << num_threads << "\n";
     std::cout << "Tolerance: " << tolerance << "\n";
@@ -440,12 +457,13 @@ void search_all_spin_configurations(
     std::cout << "=======================================================================\n\n";
     
     // Print atomic structure information
-    std::cout << "Atomic structure:\n";
+    std::cout << "Magnetic atoms to be configured:\n";
     std::cout << "-----------------------------------------------------------------------\n";
-    for (size_t i = 0; i < structure.atoms.size(); ++i) {
-        Vector3d pos = structure.get_scaled_position(i);
-        std::cout << "Atom " << std::setw(2) << (i + 1) << ": " 
-                  << std::setw(2) << structure.atoms[i].chemical_symbol 
+    for (size_t i = 0; i < magnetic_indices.size(); ++i) {
+        size_t atom_idx = magnetic_indices[i];
+        Vector3d pos = structure.get_scaled_position(atom_idx);
+        std::cout << "Mag " << std::setw(2) << (i + 1) << " (Atom " << std::setw(2) << (atom_idx + 1) << "): " 
+                  << std::setw(2) << structure.atoms[atom_idx].chemical_symbol 
                   << " at (" << std::fixed << std::setprecision(6)
                   << std::setw(9) << pos[0] << ", " 
                   << std::setw(9) << pos[1] << ", " 
@@ -458,35 +476,23 @@ void search_all_spin_configurations(
     std::atomic<size_t> completed_configs(0);
     std::atomic<size_t> altermagnetic_count(0);
     
-    // Create worker function
+    // Create worker function - only considers magnetic atoms
     auto worker = [&](size_t start_config, size_t end_config) {
         std::vector<SpinConfiguration> local_results;
         
         for (size_t config_id = start_config; config_id < end_config; ++config_id) {
-            // Generate spin configuration from configuration ID
-            std::vector<SpinType> spins(num_atoms);
+            // Initialize all spins to NONE first
+            std::vector<SpinType> spins(num_atoms, SpinType::NONE);
+            
+            // Generate spin configuration for magnetic atoms only (UP=0, DOWN=1)
             size_t temp_id = config_id;
             
-            for (size_t i = 0; i < num_atoms; ++i) {
-                int spin_val = temp_id % 3;
-                temp_id /= 3;
+            for (size_t i = 0; i < num_magnetic_atoms; ++i) {
+                size_t atom_idx = magnetic_indices[i];
+                int spin_val = temp_id % 2;  // Only UP (0) or DOWN (1)
+                temp_id /= 2;
                 
-                switch (spin_val) {
-                    case 0: spins[i] = SpinType::UP; break;
-                    case 1: spins[i] = SpinType::DOWN; break;
-                    case 2: spins[i] = SpinType::NONE; break;
-                }
-            }
-            
-            // Check if configuration has valid spin balance before testing
-            // Count total up and down spins
-            int total_up = std::count(spins.begin(), spins.end(), SpinType::UP);
-            int total_down = std::count(spins.begin(), spins.end(), SpinType::DOWN);
-            
-            // Skip configurations that don't have any magnetic atoms
-            if (total_up == 0 && total_down == 0) {
-                completed_configs++;
-                continue;
+                spins[atom_idx] = (spin_val == 0) ? SpinType::UP : SpinType::DOWN;
             }
             
             // Extract data for altermagnet analysis
