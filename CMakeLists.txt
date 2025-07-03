@@ -74,16 +74,13 @@ if(ENABLE_CUDA)
                 # Set CUDA compilation flags separately from C++ flags
                 if(CUDA_VERSION VERSION_GREATER_EQUAL "9.0")
                     set(CMAKE_CUDA_FLAGS_RELEASE "-O3 --use_fast_math")
+                    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
                 else()
-                    # CUDA 8.0 - simpler optimization flags
+                    # CUDA 8.0 - simpler optimization flags and compatibility
                     set(CMAKE_CUDA_FLAGS_RELEASE "-O2")
+                    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --disable-warnings")
                 endif()
                 set(CMAKE_CUDA_FLAGS_DEBUG "-g -G")
-                
-                # Add relaxed constexpr for all CUDA versions that support it
-                if(CUDA_VERSION VERSION_GREATER_EQUAL "9.0")
-                    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
-                endif()
                 
             endif()
         else()

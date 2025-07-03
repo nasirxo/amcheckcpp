@@ -363,11 +363,11 @@ bool CudaSpinSearcher::allocate_device_memory(size_t required_memory) {
     // Allocate device memory
     cudaError_t error = cudaSuccess;
     
-    error |= cudaMalloc(&d_positions_, num_atoms * 3 * sizeof(double));
-    error |= cudaMalloc(&d_symmetry_ops_, 1000 * 12 * sizeof(double)); // Max 1000 symops
-    error |= cudaMalloc(&d_equiv_atoms_, num_atoms * sizeof(int));
-    error |= cudaMalloc(&d_spin_configs_, num_configs * num_atoms * sizeof(int));
-    error |= cudaMalloc(&d_results_, num_configs * sizeof(bool));
+    if (error == cudaSuccess) error = cudaMalloc((void**)&d_positions_, num_atoms * 3 * sizeof(double));
+    if (error == cudaSuccess) error = cudaMalloc((void**)&d_symmetry_ops_, 1000 * 12 * sizeof(double)); // Max 1000 symops
+    if (error == cudaSuccess) error = cudaMalloc((void**)&d_equiv_atoms_, num_atoms * sizeof(int));
+    if (error == cudaSuccess) error = cudaMalloc((void**)&d_spin_configs_, num_configs * num_atoms * sizeof(int));
+    if (error == cudaSuccess) error = cudaMalloc((void**)&d_results_, num_configs * sizeof(bool));
     
     if (error != cudaSuccess) {
         cleanup_device_memory();
@@ -396,7 +396,9 @@ void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structur
     
     // Copy symmetry operations
     std::vector<double> symops;
-    for (const auto& [R, t] : structure.symmetry_operations) {
+    for (const auto& symop : structure.symmetry_operations) {
+        const auto& R = symop.first;
+        const auto& t = symop.second;
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
                 symops.push_back(R(i, j));

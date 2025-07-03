@@ -54,11 +54,11 @@ private:
     CudaConfig config_;
     
     // Device memory pointers
-    void* d_positions_;
-    void* d_symmetry_ops_;
-    void* d_equiv_atoms_;
-    void* d_spin_configs_;
-    void* d_results_;
+    double* d_positions_;
+    double* d_symmetry_ops_;
+    int* d_equiv_atoms_;
+    int* d_spin_configs_;
+    bool* d_results_;
     
     size_t allocated_memory_;
     
