@@ -15,7 +15,7 @@ __global__ void check_altermagnetism_kernel(
     const double* symmetry_ops,
     const int* equiv_atoms,
     const int* spin_configs,
-    bool* results,
+    char* results,  // Use char* for CUDA 8.0 compatibility
     int num_atoms,
     int num_symops,
     int num_configs,
@@ -27,7 +27,7 @@ __global__ void check_altermagnetism_kernel(
     
     // Each thread processes one spin configuration
     const int* spins = &spin_configs[config_idx * num_atoms];
-    bool is_altermagnetic = false;
+    char is_altermagnetic = 0;
     
     // Simplified altermagnet check on GPU
     // This is a GPU-optimized version of the CPU algorithm
@@ -41,7 +41,7 @@ __global__ void check_altermagnetism_kernel(
     
     // Basic balance check
     if (n_up != n_down) {
-        results[config_idx] = false;
+        results[config_idx] = 0;  // false
         return;
     }
     
@@ -91,7 +91,7 @@ __global__ void check_altermagnetism_kernel(
     
     // Simplified altermagnet criterion
     int n_magnetic = 2 * n_up;
-    is_altermagnetic = (sym_related_pairs >= n_magnetic) && (it_related_pairs < n_magnetic);
+    is_altermagnetic = (sym_related_pairs >= n_magnetic) && (it_related_pairs < n_magnetic) ? 1 : 0;
     
     results[config_idx] = is_altermagnetic;
 }
@@ -231,7 +231,7 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     
     // Allocate host memory for results
     std::vector<int> h_spin_configs(total_configurations * num_atoms);
-    std::vector<bool> h_results(total_configurations);
+    std::vector<char> h_results(total_configurations); // Use char for CUDA compatibility
     std::vector<int> h_magnetic_indices(magnetic_indices.begin(), magnetic_indices.end());
     
     // Copy magnetic indices to device
@@ -275,20 +275,17 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     }
     
     // Copy results back to host
-    cudaMemcpy(h_results.data(), d_results_, 
-               total_configurations * sizeof(bool), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_spin_configs.data(), d_spin_configs_, 
-               total_configurations * num_atoms * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_results.data(), d_results_, total_configurations * sizeof(char), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_spin_configs.data(), d_spin_configs_, total_configurations * num_atoms * sizeof(int), cudaMemcpyDeviceToHost);
     
     // Process results and create SpinConfiguration objects
     size_t altermagnetic_count = 0;
     for (size_t i = 0; i < total_configurations; i++) {
-        if (h_results[i]) {
+        if (h_results[i] != 0) {  // char is 1 if true
             SpinConfiguration config;
             config.configuration_id = i;
             config.is_altermagnetic = true;
             config.spins.resize(num_atoms);
-            
             // Convert from int to SpinType
             for (size_t j = 0; j < num_atoms; j++) {
                 int spin_val = h_spin_configs[i * num_atoms + j];
@@ -299,10 +296,8 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
                     default: config.spins[j] = SpinType::NONE; break;
                 }
             }
-            
             results.push_back(config);
             altermagnetic_count++;
-            
             if (verbose && altermagnetic_count <= 10) {
                 std::cout << "🎯 GPU Found Config #" << i << ": ";
                 for (size_t j = 0; j < num_atoms; j++) {
@@ -359,24 +354,24 @@ void CudaSpinSearcher::cleanup_device_memory() {
 bool CudaSpinSearcher::allocate_device_memory(size_t required_memory) {
 #ifdef HAVE_CUDA
     cleanup_device_memory();
-    
+
     const size_t num_atoms = 1000; // Placeholder - should come from structure
     const size_t num_configs = required_memory / (num_atoms * 10); // Rough estimate
-    
+
     // Allocate device memory
     cudaError_t error = cudaSuccess;
-    
+
     if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_positions_), num_atoms * 3 * sizeof(double));
     if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_symmetry_ops_), 1000 * 12 * sizeof(double)); // Max 1000 symops
     if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_equiv_atoms_), num_atoms * sizeof(int));
     if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_spin_configs_), num_configs * num_atoms * sizeof(int));
-    if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_results_), num_configs * sizeof(bool));
-    
+    if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_results_), num_configs * sizeof(char)); // Use char for CUDA compatibility
+
     if (error != cudaSuccess) {
         cleanup_device_memory();
         return false;
     }
-    
+
     allocated_memory_ = required_memory;
     return true;
 #else
@@ -394,9 +389,9 @@ void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structur
         positions.push_back(pos[1]);
         positions.push_back(pos[2]);
     }
-    cudaMemcpy(d_positions_, positions.data(), 
-               positions.size() * sizeof(double), cudaMemcpyHostToDevice);
-    
+    cudaMemcpy(static_cast<void*>(d_positions_), positions.data(), 
+               positions.size() * sizeof(double), cudaMemcpyHostToDevice); // Added static_cast<void*>
+
     // Copy symmetry operations
     std::vector<double> symops;
     for (const auto& symop : structure.symmetry_operations) {
@@ -411,12 +406,15 @@ void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structur
         symops.push_back(t[1]);
         symops.push_back(t[2]);
     }
-    cudaMemcpy(d_symmetry_ops_, symops.data(), 
-               symops.size() * sizeof(double), cudaMemcpyHostToDevice);
-    
+    cudaMemcpy(static_cast<void*>(d_symmetry_ops_), symops.data(), 
+               symops.size() * sizeof(double), cudaMemcpyHostToDevice); // Added static_cast<void*>
+
     // Copy equivalent atoms
-    cudaMemcpy(d_equiv_atoms_, structure.equivalent_atoms.data(),
-               structure.equivalent_atoms.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(static_cast<void*>(d_equiv_atoms_), structure.equivalent_atoms.data(),
+               structure.equivalent_atoms.size() * sizeof(int), cudaMemcpyHostToDevice); // Added static_cast<void*>
+
+    // Copy results (if any)
+    // cudaMemcpy(d_results_, h_results.data(), total_configurations * sizeof(bool), cudaMemcpyHostToDevice); // Changed from char to bool
 #endif
 }
 
@@ -461,7 +459,7 @@ size_t get_optimal_block_size() {
 size_t estimate_memory_requirement(size_t num_atoms, size_t num_configs) {
     size_t positions_mem = num_atoms * 3 * sizeof(double);
     size_t configs_mem = num_configs * num_atoms * sizeof(int);
-    size_t results_mem = num_configs * sizeof(bool);
+    size_t results_mem = num_configs * sizeof(char); // Use char for CUDA compatibility
     size_t symops_mem = 1000 * 12 * sizeof(double); // Conservative estimate
     size_t equiv_atoms_mem = num_atoms * sizeof(int);
     
