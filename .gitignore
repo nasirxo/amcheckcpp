@@ -120,7 +120,9 @@ $RECYCLE.BIN/
 *.out
 *.app
 
-# Exception: Keep example executables if any
+# Exception: Keep compiled binaries for distribution
+!compiled_binaries/**/*.exe
+!compiled_binaries/**/*.out
 !examples/*.exe
 !examples/*.out
 
@@ -170,5 +172,5 @@ test-results/
 *.backup
 *.orig
 
-# Upload scripts (local development only)
-upload_to_github.sh
+# Upload scripts (local development only) - DISABLED to allow sharing
+# upload_to_github.sh
