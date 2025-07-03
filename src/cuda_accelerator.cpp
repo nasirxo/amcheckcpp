@@ -237,7 +237,7 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     // Copy magnetic indices to device
     int* d_magnetic_indices;
     cudaMalloc(&d_magnetic_indices, magnetic_indices.size() * sizeof(int));
-    cudaMemcpy(d_magnetic_indices, h_magnetic_indices.data(), 
+    cudaMemcpy(static_cast<void*>(d_magnetic_indices), static_cast<const void*>(h_magnetic_indices.data()), 
                magnetic_indices.size() * sizeof(int), cudaMemcpyHostToDevice);
     
     // Generate spin configurations on GPU
@@ -272,9 +272,9 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     }
     
     // Copy results back to host
-    cudaMemcpy(h_results.data(), d_results_, 
+    cudaMemcpy(static_cast<void*>(h_results.data()), static_cast<void*>(d_results_), 
                total_configurations * sizeof(bool), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_spin_configs.data(), d_spin_configs_, 
+    cudaMemcpy(static_cast<void*>(h_spin_configs.data()), static_cast<void*>(d_spin_configs_), 
                total_configurations * num_atoms * sizeof(int), cudaMemcpyDeviceToHost);
     
     // Process results and create SpinConfiguration objects
@@ -391,7 +391,7 @@ void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structur
         positions.push_back(pos[1]);
         positions.push_back(pos[2]);
     }
-    cudaMemcpy(d_positions_, positions.data(), 
+    cudaMemcpy(static_cast<void*>(d_positions_), static_cast<const void*>(positions.data()), 
                positions.size() * sizeof(double), cudaMemcpyHostToDevice);
     
     // Copy symmetry operations
@@ -408,11 +408,11 @@ void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structur
         symops.push_back(t[1]);
         symops.push_back(t[2]);
     }
-    cudaMemcpy(d_symmetry_ops_, symops.data(), 
+    cudaMemcpy(static_cast<void*>(d_symmetry_ops_), static_cast<const void*>(symops.data()), 
                symops.size() * sizeof(double), cudaMemcpyHostToDevice);
     
     // Copy equivalent atoms
-    cudaMemcpy(d_equiv_atoms_, structure.equivalent_atoms.data(),
+    cudaMemcpy(static_cast<void*>(d_equiv_atoms_), static_cast<const void*>(structure.equivalent_atoms.data()),
                structure.equivalent_atoms.size() * sizeof(int), cudaMemcpyHostToDevice);
 #endif
 }
