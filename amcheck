@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# AMCheck launcher script for MSYS2
+# This script allows running amcheck from anywhere in the MSYS2 environment
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AMCHECK_EXE="$SCRIPT_DIR/build/bin/amcheck.exe"
+
+if [ ! -f "$AMCHECK_EXE" ]; then
+    echo "Error: amcheck executable not found at $AMCHECK_EXE"
+    echo "Please build the project first:"
+    echo "  ./build_msys2.sh"
+    exit 1
+fi
+
+# Pass all arguments to the executable
+exec "$AMCHECK_EXE" "$@"

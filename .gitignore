@@ -1,0 +1,171 @@
+# Build directories
+build/
+build-*/
+.build/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+# Visual Studio files
+.vs/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.suo
+*.user
+*.aps
+*.pch
+*.vspscc
+*_i.c
+*_p.c
+*.ncb
+*.tlb
+*.tlh
+*.bak
+*.cache
+*.ilk
+*.log
+*.sbr
+*.sdf
+*.opensdf
+*.unsuccessfulbuild
+ipch/
+obj/
+[Bb]in
+[Dd]ebug*/
+[Rr]elease*/
+Ankh.NoLoad
+
+# macOS files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux files
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Windows files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Compiled Object files
+*.o
+*.obj
+*.ko
+*.elf
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Exception: Keep example executables if any
+!examples/*.exe
+!examples/*.out
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.pid
+*.seed
+*.cover
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Dependency directories
+node_modules/
+
+# Optional npm cache directory
+.npm
+
+# Package files
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Test results
+test-results/
+*.xml
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# Results from multithreaded search
+*_amcheck_results_*.txt
+
+# Backup files
+*.bak
+*.backup
+*.orig
