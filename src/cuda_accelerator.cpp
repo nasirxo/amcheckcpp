@@ -275,9 +275,9 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     }
     
     // Copy results back to host
-    cudaMemcpy(static_cast<void*>(h_results.data()), static_cast<void*>(d_results_), 
+    cudaMemcpy(reinterpret_cast<void*>(h_results.data()), reinterpret_cast<void*>(d_results_), 
                total_configurations * sizeof(bool), cudaMemcpyDeviceToHost);
-    cudaMemcpy(static_cast<void*>(h_spin_configs.data()), static_cast<void*>(d_spin_configs_), 
+    cudaMemcpy(reinterpret_cast<void*>(h_spin_configs.data()), reinterpret_cast<void*>(d_spin_configs_), 
                total_configurations * num_atoms * sizeof(int), cudaMemcpyDeviceToHost);
     
     // Process results and create SpinConfiguration objects
