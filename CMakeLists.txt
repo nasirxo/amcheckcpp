@@ -134,7 +134,7 @@ if(NOT SPGLIB_FOUND)
         set(SPGLIB_INCLUDE_DIRS ${SPGLIB_INCLUDE_DIR})
         set(SPGLIB_LIBRARIES ${SPGLIB_LIBRARY})
         message(STATUS "Found spglib manually: ${SPGLIB_INCLUDE_DIR}")
-    elif(SPGLIB_INCLUDE_DIR)
+    elseif(SPGLIB_INCLUDE_DIR)
         # Header found but no library - try to link anyway with default name
         set(SPGLIB_FOUND TRUE)
         set(SPGLIB_INCLUDE_DIRS ${SPGLIB_INCLUDE_DIR})
