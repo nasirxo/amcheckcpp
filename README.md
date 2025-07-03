@@ -85,7 +85,10 @@ sudo apt-get update
 
 # Install build tools and dependencies
 sudo apt-get install cmake build-essential git
-sudo apt-get install libeigen3-dev libspglib-dev
+sudo apt-get install libeigen3-dev libsymspg-dev
+
+# Alternative if libsymspg-dev is not available:
+# sudo apt-get install libspglib-dev
 
 # Verify installation
 cmake --version
@@ -101,6 +104,9 @@ sudo dnf install eigen3-devel spglib-devel
 # Alternative for older systems
 sudo yum install cmake gcc-c++ git
 sudo yum install eigen3-devel spglib-devel
+
+# Note: Package names may vary. If spglib-devel is not found, try:
+# sudo dnf install libsymspg-devel
 ```
 
 #### Windows (MSYS2) - Recommended Method
@@ -657,8 +663,15 @@ sudo apt-get install libeigen3-dev
 pacman -S mingw-w64-x86_64-eigen3
 
 # Error: spglib not found
-# Ubuntu/Debian:
+# Ubuntu/Debian (try both package names):
+sudo apt-get install libsymspg-dev
+# OR
 sudo apt-get install libspglib-dev
+
+# Fedora/RHEL:
+sudo dnf install spglib-devel
+# OR
+sudo dnf install libsymspg-devel
 
 # MSYS2 (choose one based on your environment):
 # For Clang environment:
