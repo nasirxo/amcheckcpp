@@ -15,7 +15,7 @@ __global__ void check_altermagnetism_kernel(
     const double* symmetry_ops,
     const int* equiv_atoms,
     const int* spin_configs,
-    bool* results,  // Changed from char* to bool*
+    char* results,  // Use char* for CUDA 8.0 compatibility
     int num_atoms,
     int num_symops,
     int num_configs,
@@ -27,7 +27,7 @@ __global__ void check_altermagnetism_kernel(
     
     // Each thread processes one spin configuration
     const int* spins = &spin_configs[config_idx * num_atoms];
-    bool is_altermagnetic = false;  // Changed from char to bool
+    char is_altermagnetic = 0;
     
     // Simplified altermagnet check on GPU
     // This is a GPU-optimized version of the CPU algorithm
@@ -260,7 +260,7 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
         d_symmetry_ops_,
         d_equiv_atoms_,
         d_spin_configs_,
-        reinterpret_cast<bool*>(d_results_),
+        d_results_,
         static_cast<int>(num_atoms),
         static_cast<int>(structure.symmetry_operations.size()),
         static_cast<int>(total_configurations),
