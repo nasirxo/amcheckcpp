@@ -265,8 +265,8 @@ set(AMCHECK_SOURCES
 
 # Add CUDA sources if available
 if(HAVE_CUDA)
-    list(APPEND AMCHECK_SOURCES src/cuda_accelerator.cpp)
-    set_property(SOURCE src/cuda_accelerator.cpp PROPERTY LANGUAGE CUDA)
+    list(APPEND AMCHECK_SOURCES src/cuda_accelerator.cu)
+    set_property(SOURCE src/cuda_accelerator.cu PROPERTY LANGUAGE CUDA)
     
     # Set CUDA-specific compilation flags to avoid conflicts - removed duplicate optimization flags
 endif()
