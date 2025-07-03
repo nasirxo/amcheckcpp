@@ -169,3 +169,6 @@ test-results/
 *.bak
 *.backup
 *.orig
+
+# Upload scripts (local development only)
+upload_to_github.sh
