@@ -242,7 +242,7 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     
     // Generate spin configurations on GPU
     generate_spin_configs_kernel<<<grid_size, block_size>>>(
-        reinterpret_cast<int*>(d_spin_configs_),
+        d_spin_configs_,
         d_magnetic_indices,
         static_cast<int>(num_magnetic_atoms),
         static_cast<int>(num_atoms),
@@ -253,11 +253,11 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     
     // Check altermagnetism on GPU
     check_altermagnetism_kernel<<<grid_size, block_size>>>(
-        reinterpret_cast<double*>(d_positions_),
-        reinterpret_cast<double*>(d_symmetry_ops_),
-        reinterpret_cast<int*>(d_equiv_atoms_),
-        reinterpret_cast<int*>(d_spin_configs_),
-        reinterpret_cast<bool*>(d_results_),
+        d_positions_,
+        d_symmetry_ops_,
+        d_equiv_atoms_,
+        d_spin_configs_,
+        d_results_,
         static_cast<int>(num_atoms),
         static_cast<int>(structure.symmetry_operations.size()),
         static_cast<int>(total_configurations),
@@ -272,9 +272,9 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     }
     
     // Copy results back to host
-    cudaMemcpy(h_results.data(), reinterpret_cast<void*>(d_results_), 
+    cudaMemcpy(h_results.data(), d_results_, 
                total_configurations * sizeof(bool), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_spin_configs.data(), reinterpret_cast<void*>(d_spin_configs_), 
+    cudaMemcpy(h_spin_configs.data(), d_spin_configs_, 
                total_configurations * num_atoms * sizeof(int), cudaMemcpyDeviceToHost);
     
     // Process results and create SpinConfiguration objects
@@ -391,7 +391,7 @@ void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structur
         positions.push_back(pos[1]);
         positions.push_back(pos[2]);
     }
-    cudaMemcpy(reinterpret_cast<void*>(d_positions_), positions.data(), 
+    cudaMemcpy(d_positions_, positions.data(), 
                positions.size() * sizeof(double), cudaMemcpyHostToDevice);
     
     // Copy symmetry operations
@@ -408,11 +408,11 @@ void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structur
         symops.push_back(t[1]);
         symops.push_back(t[2]);
     }
-    cudaMemcpy(reinterpret_cast<void*>(d_symmetry_ops_), symops.data(), 
+    cudaMemcpy(d_symmetry_ops_, symops.data(), 
                symops.size() * sizeof(double), cudaMemcpyHostToDevice);
     
     // Copy equivalent atoms
-    cudaMemcpy(reinterpret_cast<void*>(d_equiv_atoms_), structure.equivalent_atoms.data(),
+    cudaMemcpy(d_equiv_atoms_, structure.equivalent_atoms.data(),
                structure.equivalent_atoms.size() * sizeof(int), cudaMemcpyHostToDevice);
 #endif
 }
