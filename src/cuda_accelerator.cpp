@@ -231,7 +231,7 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     
     // Allocate host memory for results
     std::vector<int> h_spin_configs(total_configurations * num_atoms);
-    std::vector<bool> h_results(total_configurations);  // Use char instead of bool
+    std::vector<char> h_results(total_configurations); // Use char for CUDA compatibility
     std::vector<int> h_magnetic_indices(magnetic_indices.begin(), magnetic_indices.end());
     
     // Copy magnetic indices to device
@@ -275,18 +275,17 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     }
     
     // Copy results back to host
-    cudaMemcpy(reinterpret_cast<void*>(h_results.data()), reinterpret_cast<void*>(d_results_), total_configurations * sizeof(bool), cudaMemcpyDeviceToHost);
-    cudaMemcpy(reinterpret_cast<void*>(h_spin_configs.data()), reinterpret_cast<void*>(d_spin_configs_), total_configurations * num_atoms * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_results.data(), d_results_, total_configurations * sizeof(char), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_spin_configs.data(), d_spin_configs_, total_configurations * num_atoms * sizeof(int), cudaMemcpyDeviceToHost);
     
     // Process results and create SpinConfiguration objects
     size_t altermagnetic_count = 0;
     for (size_t i = 0; i < total_configurations; i++) {
-        if (h_results[i] != 0) {  // Convert char to bool
+        if (h_results[i] != 0) {  // char is 1 if true
             SpinConfiguration config;
             config.configuration_id = i;
             config.is_altermagnetic = true;
             config.spins.resize(num_atoms);
-            
             // Convert from int to SpinType
             for (size_t j = 0; j < num_atoms; j++) {
                 int spin_val = h_spin_configs[i * num_atoms + j];
@@ -297,10 +296,8 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
                     default: config.spins[j] = SpinType::NONE; break;
                 }
             }
-            
             results.push_back(config);
             altermagnetic_count++;
-            
             if (verbose && altermagnetic_count <= 10) {
                 std::cout << "🎯 GPU Found Config #" << i << ": ";
                 for (size_t j = 0; j < num_atoms; j++) {
@@ -368,7 +365,7 @@ bool CudaSpinSearcher::allocate_device_memory(size_t required_memory) {
     if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_symmetry_ops_), 1000 * 12 * sizeof(double)); // Max 1000 symops
     if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_equiv_atoms_), num_atoms * sizeof(int));
     if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_spin_configs_), num_configs * num_atoms * sizeof(int));
-    if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_results_), num_configs * sizeof(bool)); // Changed from char to bool
+    if (error == cudaSuccess) error = cudaMalloc(reinterpret_cast<void**>(&d_results_), num_configs * sizeof(char)); // Use char for CUDA compatibility
 
     if (error != cudaSuccess) {
         cleanup_device_memory();
