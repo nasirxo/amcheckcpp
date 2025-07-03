@@ -88,7 +88,10 @@ sudo apt-get install cmake build-essential git
 sudo apt-get install libeigen3-dev libsymspg-dev
 
 # Alternative if libsymspg-dev is not available:
-# sudo apt-get install libspglib-dev
+sudo apt-get install libspglib-dev
+
+# For newer Ubuntu versions, you might need:
+sudo apt-get install libspglib1 libspglib-dev
 
 # Verify installation
 cmake --version
@@ -106,7 +109,9 @@ sudo yum install cmake gcc-c++ git
 sudo yum install eigen3-devel spglib-devel
 
 # Note: Package names may vary. If spglib-devel is not found, try:
-# sudo dnf install libsymspg-devel
+sudo dnf install libsymspg-devel
+# OR for newer versions:
+sudo dnf install libspglib-devel
 ```
 
 #### Windows (MSYS2) - Recommended Method
@@ -662,16 +667,33 @@ sudo apt-get install libeigen3-dev
 # MSYS2:
 pacman -S mingw-w64-x86_64-eigen3
 
-# Error: spglib not found
-# Ubuntu/Debian (try both package names):
+# Error: spglib not found or linking error (/usr/bin/ld: cannot find -lsymspg)
+# Ubuntu/Debian (try in this order):
+sudo apt-get update
+sudo apt-get install libspglib-dev libspglib1
+# OR if above doesn't work:
 sudo apt-get install libsymspg-dev
-# OR
-sudo apt-get install libspglib-dev
+# OR for newer systems:
+sudo apt-get install spglib-dev
+
+# Check what's actually installed:
+dpkg -l | grep spg
+ls /usr/lib/x86_64-linux-gnu/libspg*
+ls /usr/include/spglib.h
 
 # Fedora/RHEL:
 sudo dnf install spglib-devel
 # OR
 sudo dnf install libsymspg-devel
+
+# If none of the above work, build from source:
+git clone https://github.com/spglib/spglib.git
+cd spglib
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install
+sudo ldconfig
 
 # MSYS2 (choose one based on your environment):
 # For Clang environment:

@@ -473,6 +473,7 @@ void search_all_spin_configurations(
     
     std::vector<SpinConfiguration> altermagnetic_configs;
     std::mutex results_mutex;
+    std::mutex output_mutex;  // For thread-safe console output
     std::atomic<size_t> completed_configs(0);
     std::atomic<size_t> altermagnetic_count(0);
     
@@ -529,6 +530,27 @@ void search_all_spin_configurations(
                 config.configuration_id = config_id;
                 local_results.push_back(config);
                 altermagnetic_count++;
+                
+                // Display configuration immediately when found
+                {
+                    std::lock_guard<std::mutex> lock(output_mutex);
+                    std::cout << "\r" << std::string(80, ' ') << "\r";  // Clear progress line
+                    std::cout << "FOUND Config #" << std::setw(8) << config_id << ": ";
+                    
+                    // Show compact spin pattern
+                    for (size_t j = 0; j < spins.size(); ++j) {
+                        if (j > 0) std::cout << " ";
+                        std::cout << spin_to_string(spins[j]);
+                    }
+                    
+                    // Show detailed atomic assignment
+                    std::cout << " [";
+                    for (size_t j = 0; j < structure.atoms.size(); ++j) {
+                        if (j > 0) std::cout << " ";
+                        std::cout << structure.atoms[j].chemical_symbol << (j+1) << ":" << spin_to_string(spins[j]);
+                    }
+                    std::cout << "]\n" << std::flush;
+                }
             }
             
             completed_configs++;
@@ -537,6 +559,7 @@ void search_all_spin_configurations(
             size_t progress_interval = std::min(static_cast<size_t>(100000), 
                                                std::max(static_cast<size_t>(1), total_configurations / 100));
             if (completed_configs % progress_interval == 0) {
+                std::lock_guard<std::mutex> lock(output_mutex);
                 double progress = 100.0 * completed_configs / total_configurations;
                 std::cout << "\rProgress: " << std::fixed << std::setprecision(1) 
                           << progress << "% (" << completed_configs << "/" 

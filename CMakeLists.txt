@@ -99,11 +99,23 @@ endif()
 # spglib detection
 message(STATUS "Searching for spglib...")
 
-# First try pkg-config
+# First try pkg-config approach
 if(PkgConfig_FOUND)
-    pkg_check_modules(SPGLIB symspg)
+    pkg_check_modules(SPGLIB spglib)
     if(NOT SPGLIB_FOUND)
-        pkg_check_modules(SPGLIB spglib)
+        pkg_check_modules(SPGLIB symspg)
+    endif()
+    
+    if(SPGLIB_FOUND)
+        message(STATUS "Found spglib via pkg-config")
+        message(STATUS "  Include dirs: ${SPGLIB_INCLUDE_DIRS}")
+        message(STATUS "  Library dirs: ${SPGLIB_LIBRARY_DIRS}")
+        message(STATUS "  Libraries: ${SPGLIB_LIBRARIES}")
+        
+        # Set up the library directories for linking
+        if(SPGLIB_LIBRARY_DIRS)
+            link_directories(${SPGLIB_LIBRARY_DIRS})
+        endif()
     endif()
 endif()
 
@@ -118,15 +130,21 @@ if(NOT SPGLIB_FOUND)
             "/opt/homebrew/include"
     )
     
-    # Try multiple library name variations
+    # Try multiple library name variations and check actual library paths
     find_library(SPGLIB_LIBRARY 
-        NAMES symspg spg spglib libsymspg libspg libspglib
+        NAMES 
+            # Correct library names in order of preference  
+            symspg          # Primary name used by libsymspg packages
+            spglib          # Alternative name used by some distributions
+            spg             # Short form
         PATHS 
-            "$ENV{MINGW_PREFIX}/lib"
-            "/usr/lib" 
-            "/usr/lib/x86_64-linux-gnu"
-            "/usr/local/lib"
-            "/opt/homebrew/lib"
+            "/usr/lib/x86_64-linux-gnu"   # Primary Ubuntu/Debian location
+            "/usr/lib/aarch64-linux-gnu"  # ARM64 Ubuntu/Debian
+            "/usr/lib"                    # Generic location
+            "/usr/lib64"                  # 64-bit systems
+            "/usr/local/lib"              # Local installations
+            "$ENV{MINGW_PREFIX}/lib"      # MSYS2
+            "/opt/homebrew/lib"           # macOS Homebrew
     )
     
     if(SPGLIB_INCLUDE_DIR AND SPGLIB_LIBRARY)
@@ -134,13 +152,51 @@ if(NOT SPGLIB_FOUND)
         set(SPGLIB_INCLUDE_DIRS ${SPGLIB_INCLUDE_DIR})
         set(SPGLIB_LIBRARIES ${SPGLIB_LIBRARY})
         message(STATUS "Found spglib manually: ${SPGLIB_INCLUDE_DIR}")
+        message(STATUS "Found spglib library: ${SPGLIB_LIBRARY}")
     elseif(SPGLIB_INCLUDE_DIR)
-        # Header found but no library - try to link anyway with default name
-        set(SPGLIB_FOUND TRUE)
-        set(SPGLIB_INCLUDE_DIRS ${SPGLIB_INCLUDE_DIR})
-        set(SPGLIB_LIBRARIES "symspg")  # Try default library name
+        # Header found but no library - this is the most common case
         message(STATUS "Found spglib header: ${SPGLIB_INCLUDE_DIR}")
-        message(STATUS "Using default library name: symspg")
+        message(STATUS "But library not found. Trying to use pkg-config libs...")
+        
+        # Try to get library info from pkg-config even if SPGLIB wasn't found
+        execute_process(
+            COMMAND pkg-config --libs spglib
+            OUTPUT_VARIABLE PKG_SPGLIB_LIBS
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        
+        execute_process(
+            COMMAND pkg-config --libs-only-L spglib
+            OUTPUT_VARIABLE PKG_SPGLIB_LIBDIRS
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        
+        if(PKG_SPGLIB_LIBS)
+            set(SPGLIB_FOUND TRUE)
+            set(SPGLIB_INCLUDE_DIRS ${SPGLIB_INCLUDE_DIR})
+            # Extract library name from pkg-config output (e.g., "-lsymspg" -> "symspg")
+            string(REPLACE "-l" "" SPGLIB_LIBRARIES "${PKG_SPGLIB_LIBS}")
+            message(STATUS "Using pkg-config library flags: ${PKG_SPGLIB_LIBS}")
+            
+            # Add library directories if found
+            if(PKG_SPGLIB_LIBDIRS)
+                string(REPLACE "-L" "" SPGLIB_LIBRARY_DIRS "${PKG_SPGLIB_LIBDIRS}")
+                link_directories(${SPGLIB_LIBRARY_DIRS})
+                message(STATUS "Using pkg-config library dirs: ${PKG_SPGLIB_LIBDIRS}")
+            endif()
+        else()
+            # As a last resort, try the known library path
+            set(SPGLIB_FOUND TRUE)
+            set(SPGLIB_INCLUDE_DIRS ${SPGLIB_INCLUDE_DIR})
+            set(SPGLIB_LIBRARIES "symspg")  # Standard name
+            # Add common library directory
+            link_directories("/usr/lib/x86_64-linux-gnu")
+            message(STATUS "Using fallback library linking")
+            message(WARNING "Library not found via standard methods, using fallback approach")
+            message(WARNING "If linking fails, install: sudo apt-get install libsymspg-dev")
+        endif()
     endif()
 endif()
 
@@ -154,8 +210,10 @@ else()
     if(MSYS OR MINGW)
         message(STATUS "  MSYS2: pacman -S mingw-w64-x86_64-spglib")
     elseif(PLATFORM_LINUX)
-        message(STATUS "  Ubuntu/Debian: sudo apt-get install libsymspg-dev")
+        message(STATUS "  Ubuntu/Debian: sudo apt-get install libspglib-dev libspglib1")
+        message(STATUS "                  or: sudo apt-get install libsymspg-dev")
         message(STATUS "  Fedora: sudo dnf install spglib-devel")
+        message(STATUS "  Build from source: https://github.com/spglib/spglib")
     elseif(PLATFORM_MACOS)
         message(STATUS "  macOS: brew install spglib")
     endif()
@@ -182,7 +240,26 @@ endif()
 
 # Link spglib if found
 if(SPGLIB_FOUND)
-    target_link_libraries(amcheck ${SPGLIB_LIBRARIES})
+    # Add include directories
+    if(SPGLIB_INCLUDE_DIRS)
+        target_include_directories(amcheck PRIVATE ${SPGLIB_INCLUDE_DIRS})
+    endif()
+    
+    # Add library directories if specified
+    if(SPGLIB_LIBRARY_DIRS)
+        target_link_directories(amcheck PRIVATE ${SPGLIB_LIBRARY_DIRS})
+    endif()
+    
+    # Handle different linking strategies based on build type
+    if(BUILD_FULLY_STATIC AND SPGLIB_STATIC_LIBRARY)
+        # Use static library if available
+        target_link_libraries(amcheck ${SPGLIB_STATIC_LIBRARY})
+        message(STATUS "✅ Linking amcheck with static spglib: ${SPGLIB_STATIC_LIBRARY}")
+    else()
+        # Use dynamic library (standard case)
+        target_link_libraries(amcheck ${SPGLIB_LIBRARIES})
+        message(STATUS "✅ Linking amcheck with dynamic spglib: ${SPGLIB_LIBRARIES}")
+    endif()
 endif()
 
 # Link threading library
@@ -211,7 +288,34 @@ else()
             # Optionally link everything statically
             option(BUILD_FULLY_STATIC "Build fully static executable" OFF)
             if(BUILD_FULLY_STATIC)
-                target_link_options(amcheck PRIVATE -static)
+                # Check if static libraries are available
+                if(SPGLIB_FOUND)
+                    # Try to find static version of spglib
+                    find_library(SPGLIB_STATIC_LIBRARY 
+                        NAMES libsymspg.a libspglib.a
+                        PATHS 
+                            "/usr/lib/x86_64-linux-gnu"
+                            "/usr/lib"
+                            "/usr/lib64"
+                            "/usr/local/lib"
+                    )
+                    
+                    if(NOT SPGLIB_STATIC_LIBRARY)
+                        message(WARNING "Static spglib library not found. Cannot build fully static.")
+                        message(STATUS "Available libraries are shared only: ${SPGLIB_LIBRARIES}")
+                        message(STATUS "Building with dynamic spglib linking instead.")
+                        message(STATUS "Install libsymspg-dev with static libraries or build spglib from source with -DBUILD_STATIC=ON")
+                        
+                        # Use dynamic linking for spglib, static for runtime
+                        target_link_options(amcheck PRIVATE -Wl,-Bstatic -static-libgcc -static-libstdc++ -Wl,-Bdynamic)
+                    else()
+                        message(STATUS "Found static spglib: ${SPGLIB_STATIC_LIBRARY}")
+                        target_link_options(amcheck PRIVATE -static)
+                    endif()
+                else()
+                    # No spglib, full static is possible
+                    target_link_options(amcheck PRIVATE -static)
+                endif()
             endif()
         endif()
     endif()
