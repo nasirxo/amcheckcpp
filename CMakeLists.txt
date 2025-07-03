@@ -90,12 +90,12 @@ if(ENABLE_CUDA)
                 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
                 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
                 
-                # CUDA architecture detection - adjust for older CUDA
+                # CUDA architecture detection - support older GPUs including Tesla M2090 (CC 2.0)
                 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
                     if(CUDA_VERSION VERSION_GREATER_EQUAL "9.0")
-                        set(CMAKE_CUDA_ARCHITECTURES "50;61;75")  # Remove 86 for older CUDA
+                        set(CMAKE_CUDA_ARCHITECTURES "20;30;35;50;61;75")  # Include older architectures
                     else()
-                        set(CMAKE_CUDA_ARCHITECTURES "35;50;61")  # CUDA 8.0 compatible architectures
+                        set(CMAKE_CUDA_ARCHITECTURES "20;30;35;50;61")  # CUDA 8.0 with older GPU support
                     endif()
                     message(STATUS "Using CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
                 endif()
