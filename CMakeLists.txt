@@ -1,6 +1,25 @@
 cmake_minimum_required(VERSION 3.5)
 project(amcheck_cpp VERSION 1.0.0)
 
+# Suppress warnings during CMake configuration - show only errors
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Suppress deprecated warnings" FORCE)
+set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS ON CACHE BOOL "Suppress developer warnings" FORCE)
+set(CMAKE_POLICY_DEFAULT_CMP0054 NEW)  # Avoid policy warnings
+
+# Suppress warnings during build/compilation - show only errors
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# Global compiler warning suppression
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w")           # Suppress all C warnings
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")       # Suppress all C++ warnings
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -w")     # Suppress all CUDA warnings
+
+# Make build output quiet - only show errors
+set(CMAKE_VERBOSE_MAKEFILE OFF)
+set(CMAKE_RULE_MESSAGES OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -362,13 +381,14 @@ target_link_libraries(amcheck Threads::Threads)
 
 # Set compiler flags for standalone binaries
 if(MSVC)
-    target_compile_options(amcheck PRIVATE /W4)
+    # Suppress all warnings for MSVC
+    target_compile_options(amcheck PRIVATE /w)
     # Static linking for MSVC
     set_property(TARGET amcheck PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 else()
-    # Set different compile options for C++ only (CUDA flags set globally above)
+    # Suppress all warnings for non-MSVC compilers (warnings already suppressed globally)
     target_compile_options(amcheck PRIVATE 
-        $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic -O2>
+        $<$<COMPILE_LANGUAGE:CXX>:-w -O2>
     )
     
     # Enable static linking for standalone binaries

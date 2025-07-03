@@ -302,7 +302,13 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
                 std::cout << "🎯 GPU Found Config #" << i << ": ";
                 for (size_t j = 0; j < num_atoms; j++) {
                     if (j > 0) std::cout << " ";
-                    std::cout << spin_to_string(config.spins[j]);
+                    // Use local conversion to avoid linker issues
+                    switch (config.spins[j]) {
+                        case SpinType::UP: std::cout << "u"; break;
+                        case SpinType::DOWN: std::cout << "d"; break;
+                        case SpinType::NONE: std::cout << "n"; break;
+                        default: std::cout << "n"; break;
+                    }
                 }
                 std::cout << "\n";
             }
