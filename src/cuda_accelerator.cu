@@ -22,21 +22,8 @@ __global__ void check_altermagnetism_kernel(
     double tolerance
 ) {
     int config_idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (error != cudaSuccess) {
-            return false;
-        }
-        
-        // Support compute capability 2.0+ (Tesla M2090 is 2.0)
-        int compute_capability = prop.major * 10 + prop.minor;
-        if (compute_capability < 20) {
-            return false;
-        }
-        
-        return true;
-        
-    } catch (...) {
-        return false;
-    }if (config_idx >= num_configs) return;
+    
+    if (config_idx >= num_configs) return;
     
     // Each thread processes one spin configuration
     const int* spins = &spin_configs[config_idx * num_atoms];
