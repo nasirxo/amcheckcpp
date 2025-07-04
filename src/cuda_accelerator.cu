@@ -697,32 +697,6 @@ bool CudaSpinSearcher::allocate_device_memory_for_structure(
     return false;
 #endif
 }
-            if (error != cudaSuccess) {
-                std::cout << "⚠️  Failed to allocate results memory: " << cudaGetErrorString(error) << "\n";
-            }
-        }
-
-        if (error != cudaSuccess) {
-            cleanup_device_memory();
-            return false;
-        }
-
-        allocated_memory_ = required_memory;
-        return true;
-        
-    } catch (const std::exception& e) {
-        std::cout << "⚠️  Memory allocation failed: " << e.what() << "\n";
-        cleanup_device_memory();
-        return false;
-    } catch (...) {
-        std::cout << "⚠️  Memory allocation failed with unknown error\n";
-        cleanup_device_memory();
-        return false;
-    }
-#else
-    return false;
-#endif
-}
 
 void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structure) {
 #ifdef HAVE_CUDA
@@ -810,7 +784,6 @@ bool is_cuda_available() {
     } catch (...) {
         return false;
     }
-    */
 #else
     return false;
 #endif
