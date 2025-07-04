@@ -2,6 +2,7 @@
 #include <iostream>
 #include <iomanip>
 #include <cmath>
+#include <cstring>  // For strnlen
 
 #ifdef HAVE_CUDA
 #include <cuda_runtime.h>
@@ -154,8 +155,8 @@ CudaSpinSearcher::~CudaSpinSearcher() {
 #ifdef HAVE_CUDA
     // Safe destruction - be extra careful with memory cleanup
     try {
-        // Only cleanup if CUDA was successfully initialized
-        if (cuda_available_) {
+        // Only cleanup if CUDA was successfully initialized and memory not already cleaned
+        if (cuda_available_ && !memory_cleaned_) {
             cleanup_device_memory();
         }
     } catch (...) {
@@ -173,6 +174,7 @@ CudaSpinSearcher::~CudaSpinSearcher() {
     d_results_ = nullptr;
     allocated_memory_ = 0;
     max_batch_size_ = 0;
+    memory_cleaned_ = true;
 #endif
 }
 
@@ -262,10 +264,15 @@ bool CudaSpinSearcher::initialize() {
         config_.device_count = device_count;
         config_.memory_limit = prop.totalGlobalMem;
         config_.compute_capability = compute_capability;
-        config_.device_name = std::string(prop.name);
         
+        // Safely copy device name to avoid truncation
+        config_.device_name.clear();
+        config_.device_name.reserve(256);
+        config_.device_name = std::string(prop.name, strnlen(prop.name, 256));
         cuda_available_ = true;
+        memory_cleaned_ = false;  // Mark that we now have allocated memory
         
+        return true;
         return true;
         
     } catch (...) {
