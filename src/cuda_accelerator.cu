@@ -136,7 +136,8 @@ namespace cuda {
 CudaSpinSearcher::CudaSpinSearcher() 
     : cuda_available_(false), device_id_(-1), d_positions_(nullptr), 
       d_symmetry_ops_(nullptr), d_equiv_atoms_(nullptr), 
-      d_spin_configs_(nullptr), d_results_(nullptr), allocated_memory_(0), max_batch_size_(0) {
+      d_spin_configs_(nullptr), d_results_(nullptr), allocated_memory_(0), 
+      max_batch_size_(0), memory_cleaned_(true) {
 #ifdef HAVE_CUDA
     // Initialize CUDA configuration with safe defaults
     config_.available = false;
@@ -151,17 +152,18 @@ CudaSpinSearcher::CudaSpinSearcher()
 
 CudaSpinSearcher::~CudaSpinSearcher() {
 #ifdef HAVE_CUDA
-    // Safe destruction - only cleanup if we actually allocated memory
-    if (cuda_available_ && (d_positions_ || d_symmetry_ops_ || d_equiv_atoms_ || 
-                           d_spin_configs_ || d_results_)) {
-        try {
+    // Safe destruction - be extra careful with memory cleanup
+    try {
+        // Only cleanup if CUDA was successfully initialized
+        if (cuda_available_) {
             cleanup_device_memory();
-        } catch (...) {
-            // Absolutely no exceptions from destructor
         }
+    } catch (...) {
+        // Absolutely no exceptions from destructor
+        // Just silently reset everything
     }
     
-    // Ensure everything is reset
+    // Ensure everything is reset to safe state
     cuda_available_ = false;
     device_id_ = -1;
     d_positions_ = nullptr;
@@ -204,6 +206,18 @@ bool CudaSpinSearcher::initialize() {
             return false;
         }
         
+        // Reset device to clear any previous state (important for older GPUs)
+        error = cudaDeviceReset();
+        if (error != cudaSuccess) {
+            // Device reset failed, but continue anyway
+        }
+        
+        // Re-set device after reset
+        error = cudaSetDevice(device_id_);
+        if (error != cudaSuccess) {
+            return false;
+        }
+        
         // Get device properties
         cudaDeviceProp prop;
         error = cudaGetDeviceProperties(&prop, device_id_);
@@ -224,8 +238,21 @@ bool CudaSpinSearcher::initialize() {
             return false;
         }
         
+        // Test writing to the memory
+        error = cudaMemset(test_ptr, 0, 64);
+        if (error != cudaSuccess) {
+            cudaFree(test_ptr);
+            return false;
+        }
+        
         // Immediately free test allocation
         error = cudaFree(test_ptr);
+        if (error != cudaSuccess) {
+            return false;
+        }
+        
+        // Final synchronization test
+        error = cudaDeviceSynchronize();
         if (error != cudaSuccess) {
             return false;
         }
@@ -246,6 +273,14 @@ bool CudaSpinSearcher::initialize() {
         cuda_available_ = false;
         device_id_ = -1;
         config_.available = false;
+        
+        // Try to reset device on failure to avoid leaving it in bad state
+        try {
+            cudaDeviceReset();
+        } catch (...) {
+            // Ignore any errors during cleanup
+        }
+        
         return false;
     }
 #else
@@ -449,50 +484,61 @@ std::vector<bool> CudaSpinSearcher::check_altermagnetism_batch(
 
 void CudaSpinSearcher::cleanup_device_memory() {
 #ifdef HAVE_CUDA
-    // Only cleanup if we have valid CUDA context and memory was allocated
+    // Prevent double cleanup
+    if (memory_cleaned_) {
+        return;
+    }
+    
+    // Only cleanup if we have valid CUDA context
     if (!cuda_available_) {
+        // Reset pointers to nullptr even if CUDA not available
+        d_positions_ = nullptr;
+        d_symmetry_ops_ = nullptr;
+        d_equiv_atoms_ = nullptr;
+        d_spin_configs_ = nullptr;
+        d_results_ = nullptr;
+        allocated_memory_ = 0;
+        max_batch_size_ = 0;
+        memory_cleaned_ = true;
         return;
     }
     
     try {
-        // Synchronize device before cleanup
-        cudaDeviceSynchronize();
+        // Mark as cleaned first to prevent re-entry
+        memory_cleaned_ = true;
+        
+        // Synchronize device before cleanup to ensure no pending operations
+        cudaError_t sync_error = cudaDeviceSynchronize();
+        if (sync_error != cudaSuccess) {
+            // Log error but continue cleanup
+        }
         
         // Free device memory safely with explicit error checking
-        if (d_positions_) { 
+        // Use a more robust approach - check if pointer is valid before freeing
+        if (d_positions_ != nullptr) { 
             cudaError_t error = cudaFree(d_positions_);
             d_positions_ = nullptr;
-            if (error != cudaSuccess) {
-                // Don't throw, just log if needed
-            }
+            // Don't check error - just continue
         }
-        if (d_symmetry_ops_) { 
+        
+        if (d_symmetry_ops_ != nullptr) { 
             cudaError_t error = cudaFree(d_symmetry_ops_);
             d_symmetry_ops_ = nullptr;
-            if (error != cudaSuccess) {
-                // Don't throw, just log if needed
-            }
         }
-        if (d_equiv_atoms_) { 
+        
+        if (d_equiv_atoms_ != nullptr) { 
             cudaError_t error = cudaFree(d_equiv_atoms_);
             d_equiv_atoms_ = nullptr;
-            if (error != cudaSuccess) {
-                // Don't throw, just log if needed
-            }
         }
-        if (d_spin_configs_) { 
+        
+        if (d_spin_configs_ != nullptr) { 
             cudaError_t error = cudaFree(d_spin_configs_);
             d_spin_configs_ = nullptr;
-            if (error != cudaSuccess) {
-                // Don't throw, just log if needed
-            }
         }
-        if (d_results_) { 
+        
+        if (d_results_ != nullptr) { 
             cudaError_t error = cudaFree(d_results_);
             d_results_ = nullptr;
-            if (error != cudaSuccess) {
-                // Don't throw, just log if needed
-            }
         }
         
         allocated_memory_ = 0;
@@ -502,7 +548,7 @@ void CudaSpinSearcher::cleanup_device_memory() {
         cudaDeviceSynchronize();
         
     } catch (...) {
-        // Reset everything on any error
+        // Reset everything on any error, don't throw
         d_positions_ = nullptr;
         d_symmetry_ops_ = nullptr;
         d_equiv_atoms_ = nullptr;
@@ -510,6 +556,7 @@ void CudaSpinSearcher::cleanup_device_memory() {
         d_results_ = nullptr;
         allocated_memory_ = 0;
         max_batch_size_ = 0;
+        memory_cleaned_ = true;
     }
 #endif
 }
@@ -614,7 +661,15 @@ bool CudaSpinSearcher::allocate_device_memory_for_structure(
         const size_t num_symops = structure.symmetry_operations.size();
 
         // Conservative memory allocation for older GPUs - limit batch size
-        const size_t max_batch_configs = std::min(num_configs, static_cast<size_t>(50000));
+        // For Tesla M2090 and similar old GPUs, be extra conservative
+        size_t max_batch_configs;
+        if (config_.compute_capability <= 20) {
+            max_batch_configs = std::min(num_configs, static_cast<size_t>(5000));  // Very small for old GPUs
+        } else if (config_.compute_capability <= 30) {
+            max_batch_configs = std::min(num_configs, static_cast<size_t>(20000));
+        } else {
+            max_batch_configs = std::min(num_configs, static_cast<size_t>(50000));
+        }
 
         cudaError_t error = cudaSuccess;
         size_t total_allocated = 0;
@@ -623,6 +678,7 @@ bool CudaSpinSearcher::allocate_device_memory_for_structure(
         size_t pos_size = num_atoms * 3 * sizeof(double);
         error = cudaMalloc(reinterpret_cast<void**>(&d_positions_), pos_size);
         if (error != cudaSuccess) {
+            std::cout << "⚠️  Failed to allocate positions memory: " << cudaGetErrorString(error) << "\n";
             cleanup_device_memory();
             return false;
         }
@@ -632,6 +688,7 @@ bool CudaSpinSearcher::allocate_device_memory_for_structure(
         size_t symop_size = num_symops * 12 * sizeof(double);
         error = cudaMalloc(reinterpret_cast<void**>(&d_symmetry_ops_), symop_size);
         if (error != cudaSuccess) {
+            std::cout << "⚠️  Failed to allocate symmetry operations memory: " << cudaGetErrorString(error) << "\n";
             cleanup_device_memory();
             return false;
         }
@@ -641,6 +698,7 @@ bool CudaSpinSearcher::allocate_device_memory_for_structure(
         size_t equiv_size = num_atoms * sizeof(int);
         error = cudaMalloc(reinterpret_cast<void**>(&d_equiv_atoms_), equiv_size);
         if (error != cudaSuccess) {
+            std::cout << "⚠️  Failed to allocate equivalent atoms memory: " << cudaGetErrorString(error) << "\n";
             cleanup_device_memory();
             return false;
         }
@@ -650,6 +708,7 @@ bool CudaSpinSearcher::allocate_device_memory_for_structure(
         size_t config_size = max_batch_configs * num_atoms * sizeof(int);
         error = cudaMalloc(reinterpret_cast<void**>(&d_spin_configs_), config_size);
         if (error != cudaSuccess) {
+            std::cout << "⚠️  Failed to allocate spin configs memory: " << cudaGetErrorString(error) << "\n";
             cleanup_device_memory();
             return false;
         }
@@ -659,6 +718,7 @@ bool CudaSpinSearcher::allocate_device_memory_for_structure(
         size_t results_size = max_batch_configs * sizeof(char);
         error = cudaMalloc(reinterpret_cast<void**>(&d_results_), results_size);
         if (error != cudaSuccess) {
+            std::cout << "⚠️  Failed to allocate results memory: " << cudaGetErrorString(error) << "\n";
             cleanup_device_memory();
             return false;
         }
@@ -666,17 +726,36 @@ bool CudaSpinSearcher::allocate_device_memory_for_structure(
 
         allocated_memory_ = total_allocated;
         max_batch_size_ = max_batch_configs;
+        memory_cleaned_ = false;  // Memory is now allocated
         
         // Test memory access with a simple operation
         error = cudaMemset(d_results_, 0, results_size);
         if (error != cudaSuccess) {
+            std::cout << "⚠️  Failed to initialize results memory: " << cudaGetErrorString(error) << "\n";
             cleanup_device_memory();
             return false;
         }
         
+        // Additional test - try to read back from GPU to ensure memory is valid
+        char test_value = 0;
+        error = cudaMemcpy(&test_value, d_results_, sizeof(char), cudaMemcpyDeviceToHost);
+        if (error != cudaSuccess) {
+            std::cout << "⚠️  Failed memory validation test: " << cudaGetErrorString(error) << "\n";
+            cleanup_device_memory();
+            return false;
+        }
+        
+        std::cout << "✅ GPU memory allocation successful: " << (total_allocated / (1024*1024)) << " MB\n";
+        std::cout << "   Max batch size: " << max_batch_configs << " configurations\n";
+        
         return true;
         
+    } catch (const std::exception& e) {
+        std::cout << "⚠️  Memory allocation exception: " << e.what() << "\n";
+        cleanup_device_memory();
+        return false;
     } catch (...) {
+        std::cout << "⚠️  Unknown memory allocation error\n";
         cleanup_device_memory();
         return false;
     }

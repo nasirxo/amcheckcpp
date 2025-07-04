@@ -62,6 +62,7 @@ private:
     
     size_t allocated_memory_;
     size_t max_batch_size_;
+    bool memory_cleaned_;  // Track if memory has been cleaned up
     
     // Helper functions
     void cleanup_device_memory();

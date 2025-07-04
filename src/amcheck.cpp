@@ -431,7 +431,7 @@ void search_all_spin_configurations(
     std::unique_ptr<cuda::CudaSpinSearcher> cuda_searcher;
     
     // Enable CUDA for all GPUs with improved safety checks
-    bool cuda_disabled_for_compatibility = false;  // Re-enabled with fixes for older GPUs
+    bool cuda_disabled_for_compatibility = false;  // Re-enable with safer implementation  // Re-enabled with fixes for older GPUs
     
     if (use_gpu && !cuda_disabled_for_compatibility) {
         cuda_searcher = std::make_unique<cuda::CudaSpinSearcher>();
