@@ -145,14 +145,24 @@ CudaSpinSearcher::CudaSpinSearcher()
 
 CudaSpinSearcher::~CudaSpinSearcher() {
 #ifdef HAVE_CUDA
-    try {
-        // Only cleanup if CUDA was actually initialized
-        if (cuda_available_) {
+    // Only cleanup if CUDA was actually initialized successfully
+    if (cuda_available_ && (d_positions_ || d_symmetry_ops_ || d_equiv_atoms_ || d_spin_configs_ || d_results_)) {
+        try {
             cleanup_device_memory();
+        } catch (...) {
+            // Silently ignore all cleanup errors during destruction
         }
-    } catch (...) {
-        // Silently ignore cleanup errors during destruction
     }
+    
+    // Reset state to prevent any accidental usage
+    cuda_available_ = false;
+    device_id_ = -1;
+    d_positions_ = nullptr;
+    d_symmetry_ops_ = nullptr;
+    d_equiv_atoms_ = nullptr;
+    d_spin_configs_ = nullptr;
+    d_results_ = nullptr;
+    allocated_memory_ = 0;
 #endif
 }
 
@@ -163,12 +173,18 @@ bool CudaSpinSearcher::initialize() {
         cuda_available_ = false;
         device_id_ = -1;
         
+        // Initialize config to safe defaults
+        config_.available = false;
+        config_.device_count = 0;
+        config_.memory_limit = 0;
+        config_.compute_capability = 0;
+        config_.device_name = "None";
+        
         int device_count = 0;
         cudaError_t error = cudaGetDeviceCount(&device_count);
         
         if (error != cudaSuccess || device_count == 0) {
-            std::cout << "⚠️  No CUDA devices found or CUDA driver error: " 
-                      << cudaGetErrorString(error) << "\n";
+            // Don't print error here, just return false silently
             return false;
         }
         
@@ -176,7 +192,6 @@ bool CudaSpinSearcher::initialize() {
         device_id_ = 0;
         error = cudaSetDevice(device_id_);
         if (error != cudaSuccess) {
-            std::cout << "⚠️  Failed to set CUDA device: " << cudaGetErrorString(error) << "\n";
             return false;
         }
         
@@ -184,32 +199,17 @@ bool CudaSpinSearcher::initialize() {
         cudaDeviceProp prop;
         error = cudaGetDeviceProperties(&prop, device_id_);
         if (error != cudaSuccess) {
-            std::cout << "⚠️  Failed to get device properties: " << cudaGetErrorString(error) << "\n";
             return false;
         }
         
         // Check minimum compute capability (2.0+)
         int compute_capability = prop.major * 10 + prop.minor;
         if (compute_capability < 20) {
-            std::cout << "⚠️  GPU compute capability " << prop.major << "." << prop.minor 
-                      << " is too old (requires 2.0+)\n";
             return false;
         }
         
-        // Test basic CUDA functionality with smaller allocation
-        void* test_ptr = nullptr;
-        error = cudaMalloc(&test_ptr, 1024);  // Small test allocation
-        if (error != cudaSuccess) {
-            std::cout << "⚠️  GPU memory allocation test failed: " << cudaGetErrorString(error) << "\n";
-            return false;
-        }
-        
-        // Immediately free test allocation
-        error = cudaFree(test_ptr);
-        if (error != cudaSuccess) {
-            std::cout << "⚠️  GPU memory free test failed: " << cudaGetErrorString(error) << "\n";
-            return false;
-        }
+        // For older GPUs like Tesla M2090, skip memory test as it might cause issues
+        // Just trust that the GPU exists if we got this far
         
         // Set configuration
         config_.available = true;
@@ -220,25 +220,16 @@ bool CudaSpinSearcher::initialize() {
         
         cuda_available_ = true;
         
-        // Only print success message, don't call any other CUDA functions
-        std::cout << "🚀 CUDA GPU Acceleration Enabled!\n";
-        std::cout << "GPU: " << config_.device_name << "\n";
-        std::cout << "Memory: " << (config_.memory_limit / (1024*1024)) << " MB\n";
-        std::cout << "Compute Capability: " << prop.major << "." << prop.minor << "\n\n";
-        
         return true;
         
-    } catch (const std::exception& e) {
-        std::cout << "⚠️  CUDA initialization failed: " << e.what() << "\n";
-        cuda_available_ = false;
-        return false;
     } catch (...) {
-        std::cout << "⚠️  CUDA initialization failed with unknown error\n";
+        // Reset everything on any failure
         cuda_available_ = false;
+        device_id_ = -1;
+        config_.available = false;
         return false;
     }
 #else
-    cuda_available_ = false;
     return false;
 #endif
 }

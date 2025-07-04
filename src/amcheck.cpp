@@ -434,15 +434,16 @@ void search_all_spin_configurations(
             acceleration_method = "GPU (CUDA)";
             
             auto config = cuda_searcher->get_config();
-            std::cout << "\n🚀 GPU ACCELERATION ENABLED\n";
-            std::cout << "Device: " << config.device_name << "\n";
-            std::cout << "Compute Capability: " << config.compute_capability << "\n";
-            std::cout << "Available VRAM: " << (config.memory_limit / (1024*1024)) << " MB\n";
+            std::cout << "🚀 CUDA GPU Acceleration Enabled!\n";
+            std::cout << "GPU: " << config.device_name << "\n";
+            std::cout << "Memory: " << (config.memory_limit / (1024*1024)) << " MB\n";
+            std::cout << "Compute Capability: " << (config.compute_capability / 10) << "." << (config.compute_capability % 10) << "\n\n";
         } else {
-            std::cout << "\n⚠️  GPU requested but not available - falling back to CPU\n";
+            std::cout << "⚠️  GPU requested but not available - falling back to CPU\n";
+            cuda_searcher.reset(); // Clean up failed searcher
         }
     } else {
-        std::cout << "\n💻 CPU-only mode selected\n";
+        std::cout << "💻 CPU-only mode selected\n";
     }
 #else
     if (use_gpu) {
