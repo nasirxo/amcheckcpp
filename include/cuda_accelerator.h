@@ -61,10 +61,12 @@ private:
     char* d_results_;  // Use char instead of bool
     
     size_t allocated_memory_;
+    size_t max_batch_size_;
     
     // Helper functions
     void cleanup_device_memory();
     bool allocate_device_memory(size_t required_memory);
+    bool allocate_device_memory_for_structure(const CrystalStructure& structure, size_t num_configs);
     void copy_structure_to_device(const CrystalStructure& structure);
 };
 

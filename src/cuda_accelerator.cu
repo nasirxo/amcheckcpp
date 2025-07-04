@@ -22,8 +22,21 @@ __global__ void check_altermagnetism_kernel(
     double tolerance
 ) {
     int config_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if (config_idx >= num_configs) return;
+        if (error != cudaSuccess) {
+            return false;
+        }
+        
+        // Support compute capability 2.0+ (Tesla M2090 is 2.0)
+        int compute_capability = prop.major * 10 + prop.minor;
+        if (compute_capability < 20) {
+            return false;
+        }
+        
+        return true;
+        
+    } catch (...) {
+        return false;
+    }if (config_idx >= num_configs) return;
     
     // Each thread processes one spin configuration
     const int* spins = &spin_configs[config_idx * num_atoms];
@@ -102,7 +115,8 @@ __global__ void generate_spin_configs_kernel(
     const int* magnetic_indices,
     int num_magnetic_atoms,
     int num_total_atoms,
-    int num_configs
+    int num_configs,
+    int batch_offset = 0
 ) {
     int config_idx = blockIdx.x * blockDim.x + threadIdx.x;
     
@@ -115,7 +129,10 @@ __global__ void generate_spin_configs_kernel(
     }
     
     // Generate binary configuration for magnetic atoms
-    int temp_id = config_idx;
+    // Add batch_offset to get the actual configuration ID
+    int actual_config_id = config_idx + batch_offset;
+    int temp_id = actual_config_id;
+    
     for (int i = 0; i < num_magnetic_atoms; i++) {
         int atom_idx = magnetic_indices[i];
         int spin_val = temp_id % 2;
@@ -132,7 +149,7 @@ namespace cuda {
 CudaSpinSearcher::CudaSpinSearcher() 
     : cuda_available_(false), device_id_(-1), d_positions_(nullptr), 
       d_symmetry_ops_(nullptr), d_equiv_atoms_(nullptr), 
-      d_spin_configs_(nullptr), d_results_(nullptr), allocated_memory_(0) {
+      d_spin_configs_(nullptr), d_results_(nullptr), allocated_memory_(0), max_batch_size_(0) {
 #ifdef HAVE_CUDA
     // Initialize CUDA configuration with safe defaults
     config_.available = false;
@@ -140,21 +157,24 @@ CudaSpinSearcher::CudaSpinSearcher()
     config_.memory_limit = 0;
     config_.compute_capability = 0;
     config_.device_name = "None";
+    
+    // Don't do any CUDA calls in constructor - let initialize() handle that
 #endif
 }
 
 CudaSpinSearcher::~CudaSpinSearcher() {
 #ifdef HAVE_CUDA
-    // Only cleanup if CUDA was actually initialized successfully
-    if (cuda_available_ && (d_positions_ || d_symmetry_ops_ || d_equiv_atoms_ || d_spin_configs_ || d_results_)) {
+    // Safe destruction - only cleanup if we actually allocated memory
+    if (cuda_available_ && (d_positions_ || d_symmetry_ops_ || d_equiv_atoms_ || 
+                           d_spin_configs_ || d_results_)) {
         try {
             cleanup_device_memory();
         } catch (...) {
-            // Silently ignore all cleanup errors during destruction
+            // Absolutely no exceptions from destructor
         }
     }
     
-    // Reset state to prevent any accidental usage
+    // Ensure everything is reset
     cuda_available_ = false;
     device_id_ = -1;
     d_positions_ = nullptr;
@@ -163,6 +183,7 @@ CudaSpinSearcher::~CudaSpinSearcher() {
     d_spin_configs_ = nullptr;
     d_results_ = nullptr;
     allocated_memory_ = 0;
+    max_batch_size_ = 0;
 #endif
 }
 
@@ -180,11 +201,12 @@ bool CudaSpinSearcher::initialize() {
         config_.compute_capability = 0;
         config_.device_name = "None";
         
+        // First, check if CUDA runtime is available at all
         int device_count = 0;
         cudaError_t error = cudaGetDeviceCount(&device_count);
         
         if (error != cudaSuccess || device_count == 0) {
-            // Don't print error here, just return false silently
+            // CUDA not available or no devices
             return false;
         }
         
@@ -195,23 +217,33 @@ bool CudaSpinSearcher::initialize() {
             return false;
         }
         
-        // Get device properties with error checking
+        // Get device properties
         cudaDeviceProp prop;
         error = cudaGetDeviceProperties(&prop, device_id_);
         if (error != cudaSuccess) {
             return false;
         }
         
-        // Check minimum compute capability (2.0+)
+        // Support all compute capabilities 2.0+ (including Tesla M2090 which is 2.0)
         int compute_capability = prop.major * 10 + prop.minor;
         if (compute_capability < 20) {
             return false;
         }
         
-        // For older GPUs like Tesla M2090, skip memory test as it might cause issues
-        // Just trust that the GPU exists if we got this far
+        // Test basic CUDA functionality with minimal allocation
+        void* test_ptr = nullptr;
+        error = cudaMalloc(&test_ptr, 64);  // Very small test allocation
+        if (error != cudaSuccess) {
+            return false;
+        }
         
-        // Set configuration
+        // Immediately free test allocation
+        error = cudaFree(test_ptr);
+        if (error != cudaSuccess) {
+            return false;
+        }
+        
+        // If we get here, CUDA is working
         config_.available = true;
         config_.device_count = device_count;
         config_.memory_limit = prop.totalGlobalMem;
@@ -256,9 +288,12 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
     const size_t num_magnetic_atoms = magnetic_indices.size();
     const size_t total_configurations = static_cast<size_t>(std::pow(2, num_magnetic_atoms));
     
+    // For older GPUs, use conservative batch processing
+    const size_t max_single_batch = (config_.compute_capability < 30) ? 10000 : 50000;
+    
     // Memory estimation
-    size_t required_memory = estimate_memory_requirement(num_atoms, total_configurations);
-    if (required_memory > config_.memory_limit * 0.8) { // Use 80% of available memory
+    size_t required_memory = estimate_memory_requirement(num_atoms, std::min(total_configurations, max_single_batch));
+    if (required_memory > config_.memory_limit * 0.6) { // Use 60% of available memory for older GPUs
         std::cout << "⚠️  Configuration space too large for GPU memory (" 
                   << (required_memory / (1024*1024)) << " MB required)\n";
         std::cout << "Available GPU memory: " << (config_.memory_limit / (1024*1024)) << " MB\n";
@@ -266,112 +301,138 @@ std::vector<SpinConfiguration> CudaSpinSearcher::search_configurations(
         return results;
     }
     
-    std::cout << "🔥 GPU-Accelerated Search Starting!\n";
+    std::cout << "🔥 GPU-Accelerated Search Starting (Batch Mode for Older GPUs)!\n";
     std::cout << "GPU Memory Usage: " << (required_memory / (1024*1024)) << " MB\n";
-    std::cout << "Configurations per batch: " << total_configurations << "\n\n";
+    std::cout << "Total configurations: " << total_configurations << "\n";
     
-    // Allocate and copy structure data to GPU
-    if (!allocate_device_memory(required_memory)) {
+    // Allocate device memory based on actual structure
+    if (!allocate_device_memory_for_structure(structure, total_configurations)) {
         std::cout << "Failed to allocate GPU memory, falling back to CPU\n";
         return results;
     }
     
+    // Copy structure data to device
     copy_structure_to_device(structure);
     
-    // Configuration parameters
-    const int block_size = 256;
-    const int grid_size = (total_configurations + block_size - 1) / block_size;
+    // Process configurations in batches for older GPUs
+    const size_t batch_size = max_batch_size_;
+    const size_t num_batches = (total_configurations + batch_size - 1) / batch_size;
     
-    // Allocate host memory for results
-    std::vector<int> h_spin_configs(total_configurations * num_atoms);
-    std::vector<char> h_results(total_configurations); // Use char for CUDA compatibility
+    std::cout << "Processing in " << num_batches << " batches of up to " << batch_size << " configurations\n\n";
+    
     std::vector<int> h_magnetic_indices(magnetic_indices.begin(), magnetic_indices.end());
-    
-    // Copy magnetic indices to device
     int* d_magnetic_indices;
     cudaMalloc(&d_magnetic_indices, magnetic_indices.size() * sizeof(int));
     cudaMemcpy(d_magnetic_indices, h_magnetic_indices.data(), 
                magnetic_indices.size() * sizeof(int), cudaMemcpyHostToDevice);
     
-    // Generate spin configurations on GPU
-    dim3 grid(grid_size);
-    dim3 block(block_size);
+    size_t total_altermagnetic_count = 0;
     
-    generate_spin_configs_kernel<<<grid, block>>>(
-        d_spin_configs_,
-        d_magnetic_indices,
-        static_cast<int>(num_magnetic_atoms),
-        static_cast<int>(num_atoms),
-        static_cast<int>(total_configurations)
-    );
-    
-    cudaDeviceSynchronize();
-    
-    // Check altermagnetism on GPU
-    check_altermagnetism_kernel<<<grid, block>>>(
-        d_positions_,
-        d_symmetry_ops_,
-        d_equiv_atoms_,
-        d_spin_configs_,
-        d_results_,
-        static_cast<int>(num_atoms),
-        static_cast<int>(structure.symmetry_operations.size()),
-        static_cast<int>(total_configurations),
-        tolerance
-    );
-    
-    cudaError_t error = cudaDeviceSynchronize();
-    if (error != cudaSuccess) {
-        std::cout << "CUDA kernel error: " << cudaGetErrorString(error) << "\n";
-        cudaFree(d_magnetic_indices);
-        return results;
-    }
-    
-    // Copy results back to host
-    cudaMemcpy(h_results.data(), d_results_, total_configurations * sizeof(char), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_spin_configs.data(), d_spin_configs_, total_configurations * num_atoms * sizeof(int), cudaMemcpyDeviceToHost);
-    
-    // Process results and create SpinConfiguration objects
-    size_t altermagnetic_count = 0;
-    for (size_t i = 0; i < total_configurations; i++) {
-        if (h_results[i] != 0) {  // char is 1 if true
-            SpinConfiguration config;
-            config.configuration_id = i;
-            config.is_altermagnetic = true;
-            config.spins.resize(num_atoms);
-            // Convert from int to SpinType
-            for (size_t j = 0; j < num_atoms; j++) {
-                int spin_val = h_spin_configs[i * num_atoms + j];
-                switch (spin_val) {
-                    case 0: config.spins[j] = SpinType::NONE; break;
-                    case 1: config.spins[j] = SpinType::UP; break;
-                    case 2: config.spins[j] = SpinType::DOWN; break;
-                    default: config.spins[j] = SpinType::NONE; break;
-                }
-            }
-            results.push_back(config);
-            altermagnetic_count++;
-            if (verbose && altermagnetic_count <= 10) {
-                std::cout << "🎯 GPU Found Config #" << i << ": ";
+    for (size_t batch = 0; batch < num_batches; batch++) {
+        size_t batch_start = batch * batch_size;
+        size_t batch_end = std::min(batch_start + batch_size, total_configurations);
+        size_t current_batch_size = batch_end - batch_start;
+        
+        if (verbose) {
+            std::cout << "Processing batch " << (batch + 1) << "/" << num_batches 
+                      << " (configs " << batch_start << " to " << (batch_end - 1) << ")\n";
+        }
+        
+        // Configuration parameters
+        const int block_size = 256;
+        const int grid_size = (current_batch_size + block_size - 1) / block_size;
+        
+        // Generate spin configurations on GPU for this batch
+        dim3 grid(grid_size);
+        dim3 block(block_size);
+        
+        // Adjust kernel to work with batch offset
+        generate_spin_configs_kernel<<<grid, block>>>(
+            d_spin_configs_,
+            d_magnetic_indices,
+            static_cast<int>(num_magnetic_atoms),
+            static_cast<int>(num_atoms),
+            static_cast<int>(current_batch_size),
+            static_cast<int>(batch_start)
+        );
+        
+        cudaDeviceSynchronize();
+        
+        // Check altermagnetism on GPU for this batch
+        check_altermagnetism_kernel<<<grid, block>>>(
+            d_positions_,
+            d_symmetry_ops_,
+            d_equiv_atoms_,
+            d_spin_configs_,
+            d_results_,
+            static_cast<int>(num_atoms),
+            static_cast<int>(structure.symmetry_operations.size()),
+            static_cast<int>(current_batch_size),
+            tolerance
+        );
+        
+        cudaError_t error = cudaDeviceSynchronize();
+        if (error != cudaSuccess) {
+            std::cout << "CUDA kernel error in batch " << (batch + 1) << ": " << cudaGetErrorString(error) << "\n";
+            continue;
+        }
+        
+        // Copy batch results back to host
+        std::vector<char> h_results(current_batch_size);
+        std::vector<int> h_spin_configs(current_batch_size * num_atoms);
+        
+        cudaMemcpy(h_results.data(), d_results_, current_batch_size * sizeof(char), cudaMemcpyDeviceToHost);
+        cudaMemcpy(h_spin_configs.data(), d_spin_configs_, current_batch_size * num_atoms * sizeof(int), cudaMemcpyDeviceToHost);
+        
+        // Process batch results
+        for (size_t i = 0; i < current_batch_size; i++) {
+            if (h_results[i] != 0) {  // char is 1 if true
+                SpinConfiguration config;
+                config.configuration_id = batch_start + i;
+                config.is_altermagnetic = true;
+                config.spins.resize(num_atoms);
+                
+                // Convert from int to SpinType
                 for (size_t j = 0; j < num_atoms; j++) {
-                    if (j > 0) std::cout << " ";
-                    // Use local conversion to avoid linker issues
-                    switch (config.spins[j]) {
-                        case SpinType::UP: std::cout << "u"; break;
-                        case SpinType::DOWN: std::cout << "d"; break;
-                        case SpinType::NONE: std::cout << "n"; break;
-                        default: std::cout << "n"; break;
+                    int spin_val = h_spin_configs[i * num_atoms + j];
+                    switch (spin_val) {
+                        case 0: config.spins[j] = SpinType::NONE; break;
+                        case 1: config.spins[j] = SpinType::UP; break;
+                        case 2: config.spins[j] = SpinType::DOWN; break;
+                        default: config.spins[j] = SpinType::NONE; break;
                     }
                 }
-                std::cout << "\n";
+                
+                results.push_back(config);
+                total_altermagnetic_count++;
+                
+                if (verbose && total_altermagnetic_count <= 10) {
+                    std::cout << "🎯 GPU Found Config #" << config.configuration_id << ": ";
+                    for (size_t j = 0; j < num_atoms; j++) {
+                        if (j > 0) std::cout << " ";
+                        // Use local conversion to avoid linker issues
+                        switch (config.spins[j]) {
+                            case SpinType::UP: std::cout << "u"; break;
+                            case SpinType::DOWN: std::cout << "d"; break;
+                            case SpinType::NONE: std::cout << "n"; break;
+                            default: std::cout << "n"; break;
+                        }
+                    }
+                    std::cout << "\n";
+                }
             }
+        }
+        
+        if (verbose) {
+            std::cout << "Batch " << (batch + 1) << " complete: " << h_results.size() 
+                      << " configs processed, " << total_altermagnetic_count << " total found\n";
         }
     }
     
     cudaFree(d_magnetic_indices);
     
     std::cout << "\n🏆 GPU Search Complete!\n";
-    std::cout << "GPU found " << altermagnetic_count << " altermagnetic configurations\n";
+    std::cout << "GPU found " << total_altermagnetic_count << " altermagnetic configurations\n";
     std::cout << "GPU speedup: ~" << (total_configurations / 1000) << "x faster than CPU\n\n";
     
 #endif // HAVE_CUDA
@@ -401,93 +462,241 @@ std::vector<bool> CudaSpinSearcher::check_altermagnetism_batch(
 
 void CudaSpinSearcher::cleanup_device_memory() {
 #ifdef HAVE_CUDA
+    // Only cleanup if we have valid CUDA context and memory was allocated
+    if (!cuda_available_) {
+        return;
+    }
+    
     try {
-        // Only cleanup if we actually have CUDA available and pointers are valid
-        if (!cuda_available_) {
-            return;
-        }
+        // Synchronize device before cleanup
+        cudaDeviceSynchronize();
         
-        // Free device memory safely with null checks
+        // Free device memory safely with explicit error checking
         if (d_positions_) { 
-            cudaFree(d_positions_); 
-            d_positions_ = nullptr; 
+            cudaError_t error = cudaFree(d_positions_);
+            d_positions_ = nullptr;
+            if (error != cudaSuccess) {
+                // Don't throw, just log if needed
+            }
         }
         if (d_symmetry_ops_) { 
-            cudaFree(d_symmetry_ops_); 
-            d_symmetry_ops_ = nullptr; 
+            cudaError_t error = cudaFree(d_symmetry_ops_);
+            d_symmetry_ops_ = nullptr;
+            if (error != cudaSuccess) {
+                // Don't throw, just log if needed
+            }
         }
         if (d_equiv_atoms_) { 
-            cudaFree(d_equiv_atoms_); 
-            d_equiv_atoms_ = nullptr; 
+            cudaError_t error = cudaFree(d_equiv_atoms_);
+            d_equiv_atoms_ = nullptr;
+            if (error != cudaSuccess) {
+                // Don't throw, just log if needed
+            }
         }
         if (d_spin_configs_) { 
-            cudaFree(d_spin_configs_); 
-            d_spin_configs_ = nullptr; 
+            cudaError_t error = cudaFree(d_spin_configs_);
+            d_spin_configs_ = nullptr;
+            if (error != cudaSuccess) {
+                // Don't throw, just log if needed
+            }
         }
         if (d_results_) { 
-            cudaFree(d_results_); 
-            d_results_ = nullptr; 
+            cudaError_t error = cudaFree(d_results_);
+            d_results_ = nullptr;
+            if (error != cudaSuccess) {
+                // Don't throw, just log if needed
+            }
         }
         
         allocated_memory_ = 0;
+        max_batch_size_ = 0;
         
-        // Don't call cudaDeviceReset() in destructor as it can cause issues
-        // with other CUDA contexts in the same process
+        // Final device synchronization
+        cudaDeviceSynchronize();
         
     } catch (...) {
-        // Silently ignore cleanup errors
-        allocated_memory_ = 0;
-        // Reset pointers to prevent double-free
+        // Reset everything on any error
         d_positions_ = nullptr;
         d_symmetry_ops_ = nullptr;
         d_equiv_atoms_ = nullptr;
         d_spin_configs_ = nullptr;
         d_results_ = nullptr;
+        allocated_memory_ = 0;
+        max_batch_size_ = 0;
     }
 #endif
 }
 
 bool CudaSpinSearcher::allocate_device_memory(size_t required_memory) {
 #ifdef HAVE_CUDA
+    if (!cuda_available_) {
+        return false;
+    }
+    
     try {
+        // Clean up any existing allocations first
         cleanup_device_memory();
 
-        const size_t num_atoms = 1000; // Placeholder - should come from structure
-        const size_t num_configs = required_memory / (num_atoms * 10); // Rough estimate
+        // Conservative memory allocation for older GPUs
+        // Use reasonable bounds based on actual structure size
+        const size_t max_atoms = 1000;
+        const size_t max_configs = 100000;
 
-        // Allocate device memory with error checking
         cudaError_t error = cudaSuccess;
+        size_t total_allocated = 0;
 
-        if (error == cudaSuccess) {
-            error = cudaMalloc(reinterpret_cast<void**>(&d_positions_), num_atoms * 3 * sizeof(double));
-            if (error != cudaSuccess) {
-                std::cout << "⚠️  Failed to allocate positions memory: " << cudaGetErrorString(error) << "\n";
-            }
+        // Allocate positions memory
+        size_t pos_size = max_atoms * 3 * sizeof(double);
+        error = cudaMalloc(reinterpret_cast<void**>(&d_positions_), pos_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+        total_allocated += pos_size;
+        
+        // Allocate symmetry operations memory (conservative estimate)
+        size_t symop_size = 200 * 12 * sizeof(double);  // Reduced from 1000
+        error = cudaMalloc(reinterpret_cast<void**>(&d_symmetry_ops_), symop_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+        total_allocated += symop_size;
+        
+        // Allocate equivalent atoms memory
+        size_t equiv_size = max_atoms * sizeof(int);
+        error = cudaMalloc(reinterpret_cast<void**>(&d_equiv_atoms_), equiv_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+        total_allocated += equiv_size;
+        
+        // Allocate spin configurations memory
+        size_t config_size = max_configs * max_atoms * sizeof(int);
+        error = cudaMalloc(reinterpret_cast<void**>(&d_spin_configs_), config_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+        total_allocated += config_size;
+        
+        // Allocate results memory (using char for CUDA 8.0 compatibility)
+        size_t results_size = max_configs * sizeof(char);
+        error = cudaMalloc(reinterpret_cast<void**>(&d_results_), results_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+        total_allocated += results_size;
+
+        allocated_memory_ = total_allocated;
+        
+        // Test memory access with a simple operation
+        error = cudaMemset(d_results_, 0, results_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+
+        return true;
+        
+    } catch (...) {
+        cleanup_device_memory();
+        return false;
+    }
+#else
+    return false;
+#endif
+}
+
+bool CudaSpinSearcher::allocate_device_memory_for_structure(
+    const CrystalStructure& structure,
+    size_t num_configs
+) {
+#ifdef HAVE_CUDA
+    if (!cuda_available_) {
+        return false;
+    }
+    
+    try {
+        // Clean up any existing allocations first
+        cleanup_device_memory();
+
+        const size_t num_atoms = structure.atoms.size();
+        const size_t num_symops = structure.symmetry_operations.size();
+
+        // Conservative memory allocation for older GPUs - limit batch size
+        const size_t max_batch_configs = std::min(num_configs, static_cast<size_t>(50000));
+
+        cudaError_t error = cudaSuccess;
+        size_t total_allocated = 0;
+
+        // Allocate positions memory
+        size_t pos_size = num_atoms * 3 * sizeof(double);
+        error = cudaMalloc(reinterpret_cast<void**>(&d_positions_), pos_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+        total_allocated += pos_size;
+        
+        // Allocate symmetry operations memory 
+        size_t symop_size = num_symops * 12 * sizeof(double);
+        error = cudaMalloc(reinterpret_cast<void**>(&d_symmetry_ops_), symop_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+        total_allocated += symop_size;
+        
+        // Allocate equivalent atoms memory
+        size_t equiv_size = num_atoms * sizeof(int);
+        error = cudaMalloc(reinterpret_cast<void**>(&d_equiv_atoms_), equiv_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+        total_allocated += equiv_size;
+        
+        // Allocate spin configurations memory
+        size_t config_size = max_batch_configs * num_atoms * sizeof(int);
+        error = cudaMalloc(reinterpret_cast<void**>(&d_spin_configs_), config_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+        total_allocated += config_size;
+        
+        // Allocate results memory (using char for CUDA 8.0 compatibility)
+        size_t results_size = max_batch_configs * sizeof(char);
+        error = cudaMalloc(reinterpret_cast<void**>(&d_results_), results_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
+        }
+        total_allocated += results_size;
+
+        allocated_memory_ = total_allocated;
+        max_batch_size_ = max_batch_configs;
+        
+        // Test memory access with a simple operation
+        error = cudaMemset(d_results_, 0, results_size);
+        if (error != cudaSuccess) {
+            cleanup_device_memory();
+            return false;
         }
         
-        if (error == cudaSuccess) {
-            error = cudaMalloc(reinterpret_cast<void**>(&d_symmetry_ops_), 1000 * 12 * sizeof(double));
-            if (error != cudaSuccess) {
-                std::cout << "⚠️  Failed to allocate symmetry operations memory: " << cudaGetErrorString(error) << "\n";
-            }
-        }
+        return true;
         
-        if (error == cudaSuccess) {
-            error = cudaMalloc(reinterpret_cast<void**>(&d_equiv_atoms_), num_atoms * sizeof(int));
-            if (error != cudaSuccess) {
-                std::cout << "⚠️  Failed to allocate equivalent atoms memory: " << cudaGetErrorString(error) << "\n";
-            }
-        }
-        
-        if (error == cudaSuccess) {
-            error = cudaMalloc(reinterpret_cast<void**>(&d_spin_configs_), num_configs * num_atoms * sizeof(int));
-            if (error != cudaSuccess) {
-                std::cout << "⚠️  Failed to allocate spin configurations memory: " << cudaGetErrorString(error) << "\n";
-            }
-        }
-        
-        if (error == cudaSuccess) {
-            error = cudaMalloc(reinterpret_cast<void**>(&d_results_), num_configs * sizeof(char));
+    } catch (...) {
+        cleanup_device_memory();
+        return false;
+    }
+#else
+    return false;
+#endif
+}
             if (error != cudaSuccess) {
                 std::cout << "⚠️  Failed to allocate results memory: " << cudaGetErrorString(error) << "\n";
             }
@@ -517,16 +726,25 @@ bool CudaSpinSearcher::allocate_device_memory(size_t required_memory) {
 
 void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structure) {
 #ifdef HAVE_CUDA
+    if (!cuda_available_ || !d_positions_ || !d_symmetry_ops_ || !d_equiv_atoms_) {
+        return; // Cannot copy if device memory not allocated
+    }
+    
     // Copy atomic positions
     std::vector<double> positions;
-    for (const auto& atom : structure.atoms) {
-        Vector3d pos = structure.get_scaled_position(&atom - &structure.atoms[0]);
+    for (size_t i = 0; i < structure.atoms.size(); ++i) {
+        Vector3d pos = structure.get_scaled_position(i);
         positions.push_back(pos[0]);
         positions.push_back(pos[1]);
         positions.push_back(pos[2]);
     }
-    cudaMemcpy(static_cast<void*>(d_positions_), positions.data(), 
-               positions.size() * sizeof(double), cudaMemcpyHostToDevice); // Added static_cast<void*>
+    
+    cudaError_t error = cudaMemcpy(static_cast<void*>(d_positions_), positions.data(), 
+                                   positions.size() * sizeof(double), cudaMemcpyHostToDevice);
+    if (error != cudaSuccess) {
+        std::cout << "Warning: Failed to copy positions to GPU: " << cudaGetErrorString(error) << "\n";
+        return;
+    }
 
     // Copy symmetry operations
     std::vector<double> symops;
@@ -542,30 +760,32 @@ void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structur
         symops.push_back(t[1]);
         symops.push_back(t[2]);
     }
-    cudaMemcpy(static_cast<void*>(d_symmetry_ops_), symops.data(), 
-               symops.size() * sizeof(double), cudaMemcpyHostToDevice); // Added static_cast<void*>
+    
+    error = cudaMemcpy(static_cast<void*>(d_symmetry_ops_), symops.data(), 
+                       symops.size() * sizeof(double), cudaMemcpyHostToDevice);
+    if (error != cudaSuccess) {
+        std::cout << "Warning: Failed to copy symmetry operations to GPU: " << cudaGetErrorString(error) << "\n";
+        return;
+    }
 
     // Copy equivalent atoms
-    cudaMemcpy(static_cast<void*>(d_equiv_atoms_), structure.equivalent_atoms.data(),
-               structure.equivalent_atoms.size() * sizeof(int), cudaMemcpyHostToDevice); // Added static_cast<void*>
+    error = cudaMemcpy(static_cast<void*>(d_equiv_atoms_), structure.equivalent_atoms.data(),
+                       structure.equivalent_atoms.size() * sizeof(int), cudaMemcpyHostToDevice);
+    if (error != cudaSuccess) {
+        std::cout << "Warning: Failed to copy equivalent atoms to GPU: " << cudaGetErrorString(error) << "\n";
+        return;
+    }
 
-    // Copy results (if any)
-    // cudaMemcpy(d_results_, h_results.data(), total_configurations * sizeof(bool), cudaMemcpyHostToDevice); // Changed from char to bool
+    // Synchronize after all copies
+    cudaDeviceSynchronize();
 #endif
 }
 
 // Utility functions
 bool is_cuda_available() {
 #ifdef HAVE_CUDA
-    // For Tesla M2090 and other older GPUs, avoid any CUDA runtime calls
-    // that might cause crashes during initialization. 
-    // Just return false to disable CUDA until we can implement a safer check.
-    return false;
-    
-    /* 
-    // This code causes crashes on Tesla M2090, so disabled for now:
     try {
-        // Simple check without any memory allocation
+        // Safe CUDA check for older GPUs like Tesla M2090
         int device_count = 0;
         cudaError_t error = cudaGetDeviceCount(&device_count);
         

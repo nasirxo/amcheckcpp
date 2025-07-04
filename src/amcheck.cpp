@@ -430,9 +430,8 @@ void search_all_spin_configurations(
 #ifdef HAVE_CUDA
     std::unique_ptr<cuda::CudaSpinSearcher> cuda_searcher;
     
-    // For now, disable CUDA for older GPUs to ensure stability
-    // TODO: Fix CUDA memory management for Tesla M2090 and similar older GPUs
-    bool cuda_disabled_for_compatibility = true;
+    // Enable CUDA for all GPUs with improved safety checks
+    bool cuda_disabled_for_compatibility = false;  // Re-enabled with fixes for older GPUs
     
     if (use_gpu && !cuda_disabled_for_compatibility) {
         cuda_searcher = std::make_unique<cuda::CudaSpinSearcher>();
