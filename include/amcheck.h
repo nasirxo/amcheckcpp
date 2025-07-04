@@ -103,6 +103,7 @@ struct SpinConfiguration {
 
 void search_all_spin_configurations(
     const CrystalStructure& structure,
+    const std::string& input_filename,
     double tolerance = DEFAULT_TOLERANCE,
     bool verbose = false
 );
@@ -110,6 +111,7 @@ void search_all_spin_configurations(
 void perform_smart_sampling_search(
     const CrystalStructure& structure,
     const std::vector<size_t>& magnetic_indices,
+    const std::string& input_filename,
     double tolerance,
     bool verbose,
     const std::string& acceleration_method

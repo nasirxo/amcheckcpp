@@ -10,7 +10,7 @@ namespace amcheck {
     void assign_spins_interactively(CrystalStructure& structure);
     void assign_spins_to_magnetic_atoms_only(CrystalStructure& structure);
     void assign_magnetic_moments_interactively(CrystalStructure& structure);
-    void search_all_spin_configurations(const CrystalStructure& structure, double tolerance, bool verbose, bool use_gpu = true);
+    void search_all_spin_configurations(const CrystalStructure& structure, const std::string& input_filename, double tolerance, bool verbose, bool use_gpu = true);
     void print_banner();
     void print_version();
     void print_usage(const std::string& program_name);
@@ -275,7 +275,7 @@ void process_search_all_analysis(const std::string& filename, const Arguments& a
         }
         
         // Start comprehensive search
-        search_all_spin_configurations(structure, args.tolerance, args.verbose, args.use_gpu && !args.force_cpu);
+        search_all_spin_configurations(structure, filename, args.tolerance, args.verbose, args.use_gpu && !args.force_cpu);
         
     } catch (const std::exception& e) {
         std::cerr << "ERROR: " << e.what() << "\n";

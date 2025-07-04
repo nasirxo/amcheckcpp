@@ -8,6 +8,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <ctime>
 #include <stdexcept>
 #include <numeric>
 #include <memory>
@@ -413,6 +414,7 @@ Matrix3d symmetrized_conductivity_tensor(
 
 void search_all_spin_configurations(
     const CrystalStructure& structure,
+    const std::string& input_filename,
     double tolerance,
     bool verbose,
     bool use_gpu
@@ -476,8 +478,39 @@ void search_all_spin_configurations(
     const size_t total_configurations = static_cast<size_t>(std::pow(2, num_magnetic_atoms));
     const unsigned int num_threads = std::thread::hardware_concurrency();
     
-    // Generate output filename based on input structure
-    std::string output_filename = "amcheck_spin_configurations.txt";
+    // Generate output filename based on input structure filename
+    std::string base_filename = input_filename;
+    
+    // Extract just the filename without path
+    size_t last_slash = base_filename.find_last_of("/\\");
+    if (last_slash != std::string::npos) {
+        base_filename = base_filename.substr(last_slash + 1);
+    }
+    
+    // Remove common extensions
+    std::vector<std::string> extensions = {".vasp", ".poscar", ".POSCAR", ".cif", ".xyz"};
+    for (const auto& ext : extensions) {
+        if (base_filename.length() >= ext.length() && 
+            base_filename.substr(base_filename.length() - ext.length()) == ext) {
+            base_filename = base_filename.substr(0, base_filename.length() - ext.length());
+            break;
+        }
+    }
+    
+    // If base_filename is empty or just "POSCAR", use "structure"
+    if (base_filename.empty() || base_filename == "POSCAR") {
+        base_filename = "structure";
+    }
+    
+    // Generate timestamped output filename
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto tm = *std::localtime(&time_t);
+    
+    char timestamp[32];
+    std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tm);
+    
+    std::string output_filename = base_filename + "_amcheck_results_" + timestamp + ".txt";
     
     if (num_magnetic_atoms > 20) {
         std::cout << "WARNING: Structure has " << num_magnetic_atoms << " magnetic atoms.\n";
@@ -512,7 +545,7 @@ void search_all_spin_configurations(
                 std::string sample_response;
                 std::getline(std::cin, sample_response);
                 if (sample_response != "n" && sample_response != "N") {
-                    perform_smart_sampling_search(structure, magnetic_indices, tolerance, verbose, acceleration_method);
+                    perform_smart_sampling_search(structure, magnetic_indices, input_filename, tolerance, verbose, acceleration_method);
                     return;
                 }
             }
@@ -877,6 +910,7 @@ void search_all_spin_configurations(
 void perform_smart_sampling_search(
     const CrystalStructure& structure,
     const std::vector<size_t>& magnetic_indices,
+    const std::string& input_filename,
     double tolerance,
     bool verbose,
     const std::string& acceleration_method
@@ -1028,8 +1062,39 @@ void perform_smart_sampling_search(
                   return a.configuration_id < b.configuration_id;
               });
     
-    // Save results to file
-    std::string output_filename = "amcheck_sampled_spin_configurations.txt";
+    // Save results to file with input-based filename
+    std::string base_filename = input_filename;
+    
+    // Extract just the filename without path
+    size_t last_slash = base_filename.find_last_of("/\\");
+    if (last_slash != std::string::npos) {
+        base_filename = base_filename.substr(last_slash + 1);
+    }
+    
+    // Remove common extensions
+    std::vector<std::string> extensions = {".vasp", ".poscar", ".POSCAR", ".cif", ".xyz"};
+    for (const auto& ext : extensions) {
+        if (base_filename.length() >= ext.length() && 
+            base_filename.substr(base_filename.length() - ext.length()) == ext) {
+            base_filename = base_filename.substr(0, base_filename.length() - ext.length());
+            break;
+        }
+    }
+    
+    // If base_filename is empty or just "POSCAR", use "structure"
+    if (base_filename.empty() || base_filename == "POSCAR") {
+        base_filename = "structure";
+    }
+    
+    // Generate timestamped output filename for sampling
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto tm = *std::localtime(&time_t);
+    
+    char timestamp[32];
+    std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tm);
+    
+    std::string output_filename = base_filename + "_amcheck_sampled_results_" + timestamp + ".txt";
     std::ofstream outfile(output_filename);
     if (outfile.is_open()) {
         outfile << "# AMCheck C++ - Sampled Altermagnetic Spin Configurations\n";
