@@ -614,12 +614,25 @@ void search_all_spin_configurations(
                     }
                     
                     // Show detailed atomic assignment
-                    std::cout << " [";
+                    std::cout << " | ";
                     for (size_t j = 0; j < structure.atoms.size(); ++j) {
                         if (j > 0) std::cout << " ";
-                        std::cout << structure.atoms[j].chemical_symbol << (j+1) << ":" << spin_to_string(config.spins[j]);
+                        std::cout << structure.atoms[j].chemical_symbol;
+                        
+                        // Add spin arrow symbols
+                        switch (config.spins[j]) {
+                            case SpinType::UP:
+                                std::cout << "(↑)";
+                                break;
+                            case SpinType::DOWN:
+                                std::cout << "(↓)";
+                                break;
+                            case SpinType::NONE:
+                                std::cout << "(—)";
+                                break;
+                        }
                     }
-                    std::cout << "]\n" << std::flush;
+                    std::cout << "\n" << std::flush;
                 }
             }
             
@@ -710,12 +723,25 @@ void search_all_spin_configurations(
                     }
                     
                     // Show detailed atomic assignment
-                    std::cout << " [";
+                    std::cout << " | ";
                     for (size_t j = 0; j < structure.atoms.size(); ++j) {
                         if (j > 0) std::cout << " ";
-                        std::cout << structure.atoms[j].chemical_symbol << (j+1) << ":" << spin_to_string(spins[j]);
+                        std::cout << structure.atoms[j].chemical_symbol;
+                        
+                        // Add spin arrow symbols
+                        switch (spins[j]) {
+                            case SpinType::UP:
+                                std::cout << "(↑)";
+                                break;
+                            case SpinType::DOWN:
+                                std::cout << "(↓)";
+                                break;
+                            case SpinType::NONE:
+                                std::cout << "(—)";
+                                break;
+                        }
                     }
-                    std::cout << "]\n" << std::flush;
+                    std::cout << "\n" << std::flush;
                 }
             }
             
@@ -822,12 +848,13 @@ void search_all_spin_configurations(
     outfile << "#\n";
     outfile << "# Format: ConfigID | Spin_Pattern | Detailed_Assignment\n";
     outfile << "#         u = up, d = down, n = none\n";
+    outfile << "#         ↑ = spin up, ↓ = spin down, — = non-magnetic\n";
     outfile << "#\n\n";
     
     // Write all configurations to file
     for (const auto& config : altermagnetic_configs) {
         // Configuration ID and compact spin pattern
-        outfile << std::setw(8) << config.configuration_id << " | ";
+        outfile << "Config #" << std::setw(8) << config.configuration_id << ": ";
         
         for (size_t j = 0; j < config.spins.size(); ++j) {
             if (j > 0) outfile << " ";
@@ -835,10 +862,23 @@ void search_all_spin_configurations(
         }
         outfile << " | ";
         
-        // Detailed atomic assignment
+        // Detailed atomic assignment with spin arrows
         for (size_t j = 0; j < structure.atoms.size(); ++j) {
             if (j > 0) outfile << " ";
-            outfile << structure.atoms[j].chemical_symbol << j+1 << ":" << spin_to_string(config.spins[j]);
+            outfile << structure.atoms[j].chemical_symbol;
+            
+            // Add spin arrow symbols
+            switch (config.spins[j]) {
+                case SpinType::UP:
+                    outfile << "(↑)";
+                    break;
+                case SpinType::DOWN:
+                    outfile << "(↓)";
+                    break;
+                case SpinType::NONE:
+                    outfile << "(—)";
+                    break;
+            }
         }
         outfile << "\n";
     }
@@ -861,12 +901,25 @@ void search_all_spin_configurations(
         }
         
         // Show detailed atomic assignment
-        std::cout << " [";
+        std::cout << " | ";
         for (size_t j = 0; j < structure.atoms.size(); ++j) {
             if (j > 0) std::cout << " ";
-            std::cout << structure.atoms[j].chemical_symbol << (j+1) << ":" << spin_to_string(config.spins[j]);
+            std::cout << structure.atoms[j].chemical_symbol;
+            
+            // Add spin arrow symbols
+            switch (config.spins[j]) {
+                case SpinType::UP:
+                    std::cout << "(↑)";
+                    break;
+                case SpinType::DOWN:
+                    std::cout << "(↓)";
+                    break;
+                case SpinType::NONE:
+                    std::cout << "(—)";
+                    break;
+            }
         }
-        std::cout << "]\n";
+        std::cout << "\n";
     }
     
     if (altermagnetic_configs.size() > 50) {
@@ -881,7 +934,7 @@ void search_all_spin_configurations(
             for (const auto& config : altermagnetic_configs) {
                 std::cout << "\nConfiguration #" << config.configuration_id << ":\n";
                 
-                // Show atomic details with positions
+                // Show atomic details with positions and spin arrows
                 for (size_t j = 0; j < structure.atoms.size(); ++j) {
                     Vector3d pos = structure.get_scaled_position(j);
                     std::cout << "  Atom " << std::setw(2) << (j+1) << ": " 
@@ -889,8 +942,21 @@ void search_all_spin_configurations(
                               << " at (" << std::fixed << std::setprecision(6)
                               << std::setw(9) << pos[0] << ", " 
                               << std::setw(9) << pos[1] << ", " 
-                              << std::setw(9) << pos[2] << ") "
-                              << "[" << spin_to_string(config.spins[j]) << "]\n";
+                              << std::setw(9) << pos[2] << ") ";
+                    
+                    // Add spin arrow symbols
+                    switch (config.spins[j]) {
+                        case SpinType::UP:
+                            std::cout << "(↑)";
+                            break;
+                        case SpinType::DOWN:
+                            std::cout << "(↓)";
+                            break;
+                        case SpinType::NONE:
+                            std::cout << "(—)";
+                            break;
+                    }
+                    std::cout << "\n";
                 }
             }
         }
@@ -1016,6 +1082,24 @@ void perform_smart_sampling_search(
                             if (j > 0) std::cout << " ";
                             std::cout << spin_to_string(spins[j]);
                         }
+                        std::cout << " | ";
+                        for (size_t j = 0; j < structure.atoms.size(); ++j) {
+                            if (j > 0) std::cout << " ";
+                            std::cout << structure.atoms[j].chemical_symbol;
+                            
+                            // Add spin arrow symbols
+                            switch (spins[j]) {
+                                case SpinType::UP:
+                                    std::cout << "(↑)";
+                                    break;
+                                case SpinType::DOWN:
+                                    std::cout << "(↓)";
+                                    break;
+                                case SpinType::NONE:
+                                    std::cout << "(—)";
+                                    break;
+                            }
+                        }
                         std::cout << " [Found: " << altermagnetic_count << "]\n";
                     }
                 }
@@ -1105,10 +1189,28 @@ void perform_smart_sampling_search(
         outfile << "#\n\n";
         
         for (const auto& config : altermagnetic_configs) {
-            outfile << std::setw(8) << config.configuration_id << " | ";
+            outfile << "Config #" << std::setw(8) << config.configuration_id << ": ";
             for (size_t j = 0; j < config.spins.size(); ++j) {
                 if (j > 0) outfile << " ";
                 outfile << spin_to_string(config.spins[j]);
+            }
+            outfile << " | ";
+            for (size_t j = 0; j < structure.atoms.size(); ++j) {
+                if (j > 0) outfile << " ";
+                outfile << structure.atoms[j].chemical_symbol;
+                
+                // Add spin arrow symbols
+                switch (config.spins[j]) {
+                    case SpinType::UP:
+                        outfile << "(↑)";
+                        break;
+                    case SpinType::DOWN:
+                        outfile << "(↓)";
+                        break;
+                    case SpinType::NONE:
+                        outfile << "(—)";
+                        break;
+                }
             }
             outfile << "\n";
         }
@@ -1128,6 +1230,24 @@ void perform_smart_sampling_search(
         for (size_t j = 0; j < config.spins.size(); ++j) {
             if (j > 0) std::cout << " ";
             std::cout << spin_to_string(config.spins[j]);
+        }
+        std::cout << " | ";
+        for (size_t j = 0; j < structure.atoms.size(); ++j) {
+            if (j > 0) std::cout << " ";
+            std::cout << structure.atoms[j].chemical_symbol;
+            
+            // Add spin arrow symbols
+            switch (config.spins[j]) {
+                case SpinType::UP:
+                    std::cout << "(↑)";
+                    break;
+                case SpinType::DOWN:
+                    std::cout << "(↓)";
+                    break;
+                case SpinType::NONE:
+                    std::cout << "(—)";
+                    break;
+            }
         }
         std::cout << "\n";
     }
