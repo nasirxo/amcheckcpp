@@ -120,21 +120,9 @@ void print_version() {
     try {
         // Use the utility function instead of creating a full searcher object
         if (cuda::is_cuda_available()) {
-            // Get basic device info without creating searcher object
-            int device_count = 0;
-            cudaError_t error = cudaGetDeviceCount(&device_count);
-            if (error == cudaSuccess && device_count > 0) {
-                cudaDeviceProp prop;
-                error = cudaGetDeviceProperties(&prop, 0);
-                if (error == cudaSuccess) {
-                    std::cout << "GPU: " << prop.name 
-                              << " (CC " << prop.major << "." << prop.minor << ")\n";
-                } else {
-                    std::cout << "GPU: Available but properties unavailable\n";
-                }
-            } else {
-                std::cout << "GPU: Not available\n";
-            }
+            // Note: On some older systems (like Tesla M2090), CUDA runtime calls
+            // can cause crashes. We've disabled the CUDA check temporarily.
+            std::cout << "GPU: CUDA available but disabled for compatibility\n";
         } else {
             std::cout << "GPU: Not available\n";
         }

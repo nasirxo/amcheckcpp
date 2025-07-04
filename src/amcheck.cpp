@@ -427,7 +427,11 @@ void search_all_spin_configurations(
 #ifdef HAVE_CUDA
     std::unique_ptr<cuda::CudaSpinSearcher> cuda_searcher;
     
-    if (use_gpu) {
+    // For now, disable CUDA for older GPUs to ensure stability
+    // TODO: Fix CUDA memory management for Tesla M2090 and similar older GPUs
+    bool cuda_disabled_for_compatibility = true;
+    
+    if (use_gpu && !cuda_disabled_for_compatibility) {
         cuda_searcher = std::make_unique<cuda::CudaSpinSearcher>();
         if (cuda_searcher->initialize()) {
             use_cuda = true;
@@ -442,12 +446,16 @@ void search_all_spin_configurations(
             std::cout << "⚠️  GPU requested but not available - falling back to CPU\n";
             cuda_searcher.reset(); // Clean up failed searcher
         }
+    } else if (use_gpu && cuda_disabled_for_compatibility) {
+        std::cout << "⚠️  GPU requested but CUDA support temporarily disabled for compatibility\n";
+        std::cout << "Note: CUDA support for older GPUs (Tesla M2090, etc.) is being improved\n";
+        std::cout << "Using optimized CPU multithreading instead\n";
     } else {
         std::cout << "💻 CPU-only mode selected\n";
     }
 #else
     if (use_gpu) {
-        std::cout << "\n⚠️  GPU requested but CUDA support not compiled - using CPU\n";
+        std::cout << "⚠️  GPU requested but CUDA support not compiled - using CPU\n";
     }
 #endif
     

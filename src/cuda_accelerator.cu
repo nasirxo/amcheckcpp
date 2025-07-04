@@ -557,6 +557,13 @@ void CudaSpinSearcher::copy_structure_to_device(const CrystalStructure& structur
 // Utility functions
 bool is_cuda_available() {
 #ifdef HAVE_CUDA
+    // For Tesla M2090 and other older GPUs, avoid any CUDA runtime calls
+    // that might cause crashes during initialization. 
+    // Just return false to disable CUDA until we can implement a safer check.
+    return false;
+    
+    /* 
+    // This code causes crashes on Tesla M2090, so disabled for now:
     try {
         // Simple check without any memory allocation
         int device_count = 0;
@@ -583,6 +590,7 @@ bool is_cuda_available() {
     } catch (...) {
         return false;
     }
+    */
 #else
     return false;
 #endif
