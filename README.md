@@ -58,6 +58,12 @@ Altermagnets are a novel class of magnetic materials that combine properties of 
 - ✅ **Anomalous Hall Coefficient Analysis**: Magnetic transport property calculations
 - ✅ **Standalone Executables**: Self-contained binaries requiring no external dependencies
 
+### GPU Acceleration (In Development)
+- 🚧 **CUDA Support**: GPU acceleration is being developed but currently disabled
+- ⚡ **Performance Focus**: Current implementation prioritizes robust CPU multithreading
+- 🔬 **Future Release**: GPU support will be enabled in future versions after stability testing
+- 💻 **Current Recommendation**: Use the highly optimized CPU multithreaded mode for best performance
+
 ### Analysis Modes
 1. **Standard Mode**: Single configuration altermagnet analysis
 2. **Comprehensive Search Mode** (`-a`): Multithreaded exploration of all possible spin configurations
@@ -625,6 +631,9 @@ Hall Vector: [0.0000000, 0.0000000, 0.0000000]
 
 ## Performance & Optimization
 
+### Current Implementation
+**CPU Multithreading Focus**: The current version emphasizes robust CPU multithreading performance. GPU acceleration is under development but disabled for stability reasons. The CPU implementation provides excellent scaling across multiple cores and is highly optimized for various system configurations.
+
 ### Computational Complexity
 - **Search space**: 3^N configurations (N = number of atoms)
 - **Memory usage**: O(N + found_configs)  
@@ -866,7 +875,7 @@ export PATH="/usr/local/amcheck/bin:$PATH"
 - 🔮 Primitive cell detection and transformation
 - 🔮 Web interface for online analysis
 - 🔮 Python bindings for integration with existing workflows
-- 🔮 GPU acceleration for extremely large structures
+- 🔮 GPU acceleration for extremely large structures (currently under development)
 - 🔮 Machine learning-assisted configuration prediction
 
 ## License & Citation

@@ -171,7 +171,7 @@ void print_usage(const std::string& program_name) {
         std::cout << "   -a, --search-all   Search all possible spin configurations (multithreaded)\n";
         std::cout << "   --ahc              Analyze Anomalous Hall Coefficient\n";
 #ifdef HAVE_CUDA
-        std::cout << "   --gpu              Enable GPU acceleration (default if available)\n";
+        std::cout << "   --gpu              Enable GPU acceleration (currently disabled, falls back to CPU)\n";
         std::cout << "   --cpu, --no-gpu    Force CPU-only computation\n";
 #endif
         std::cout << "\n";
@@ -184,12 +184,12 @@ void print_usage(const std::string& program_name) {
         std::cout << "   " << program_name << " -a POSCAR                 # Search all spin configurations\n";
         std::cout << "   " << program_name << " --ahc POSCAR              # Anomalous Hall analysis\n";
 #ifdef HAVE_CUDA
-        std::cout << "   " << program_name << " -a --gpu POSCAR           # GPU-accelerated search\n";
+        std::cout << "   " << program_name << " -a --gpu POSCAR           # Multithreaded search (GPU disabled)\n";
 #endif
         std::cout << "\n";
         std::cout << "💡 TIP: For best results, ensure your POSCAR file contains a well-converged structure!\n";
 #ifdef HAVE_CUDA
-        std::cout << "🚀 GPU acceleration available - use --gpu/--cpu to control!\n";
+        std::cout << "🚀 GPU acceleration disabled for stability - use --gpu/--cpu to control!\n";
 #endif
         std::cout << "\n";
     } else {
@@ -210,7 +210,7 @@ void print_usage(const std::string& program_name) {
         std::cout << "   -a, --search-all   Search all possible spin configurations (multithreaded)\n";
         std::cout << "   --ahc              Analyze Anomalous Hall Coefficient\n";
 #ifdef HAVE_CUDA
-        std::cout << "   --gpu              Enable GPU acceleration (default if available)\n";
+        std::cout << "   --gpu              Enable GPU acceleration (currently disabled, falls back to CPU)\n";
         std::cout << "   --cpu, --no-gpu    Force CPU-only computation\n";
 #endif
         std::cout << "\n";
@@ -223,13 +223,13 @@ void print_usage(const std::string& program_name) {
         std::cout << "   " << program_name << " -a POSCAR                 # Search all spin configurations\n";
         std::cout << "   " << program_name << " --ahc POSCAR              # Anomalous Hall analysis\n";
 #ifdef HAVE_CUDA
-        std::cout << "   " << program_name << " -a --gpu POSCAR           # GPU-accelerated search\n";
+        std::cout << "   " << program_name << " -a --gpu POSCAR           # Multithreaded search (GPU disabled)\n";
 #endif
         std::cout << "\n";
         std::cout << "TIP: For best results, ensure your POSCAR file contains a well-converged structure!\n";
         std::cout << "     To enable Unicode output on Windows, set AMCHECK_USE_UNICODE=1\n";
 #ifdef HAVE_CUDA
-        std::cout << "     GPU acceleration available - use --gpu/--cpu to control!\n";
+        std::cout << "     GPU acceleration disabled for stability - use --gpu/--cpu to control!\n";
 #endif
         std::cout << "\n";
     }
