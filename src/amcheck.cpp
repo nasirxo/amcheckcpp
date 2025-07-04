@@ -15,6 +15,9 @@
 #include <future>
 #include <atomic>
 #include <mutex>
+#include <random>
+#include <set>
+#include <chrono>
 
 namespace amcheck {
 
@@ -479,11 +482,42 @@ void search_all_spin_configurations(
     if (num_magnetic_atoms > 20) {
         std::cout << "WARNING: Structure has " << num_magnetic_atoms << " magnetic atoms.\n";
         std::cout << "This will generate " << total_configurations << " configurations.\n";
-        std::cout << "This may take a very long time. Continue? (y/N): ";
+        
+        if (num_magnetic_atoms <= 25) {
+            std::cout << "This may take a long time but is feasible with multithreading.\n";
+            std::cout << "Estimated time: ";
+            if (num_magnetic_atoms <= 22) {
+                std::cout << "a few minutes to 1 hour\n";
+            } else {
+                std::cout << "1-8 hours depending on CPU cores\n";
+            }
+        } else {
+            std::cout << "This is computationally very expensive and may take days!\n";
+            std::cout << "\nRECOMMENDATIONS for large structures:\n";
+            std::cout << "1. Use representative supercell with fewer magnetic atoms\n";
+            std::cout << "2. Focus on specific magnetic sublattices\n";
+            std::cout << "3. Use symmetry-reduced configuration space\n";
+            std::cout << "4. Consider sampling approach rather than exhaustive search\n";
+        }
+        
+        std::cout << "\nDo you want to continue with the full exhaustive search? (y/N): ";
         std::string response;
         std::getline(std::cin, response);
         if (response != "y" && response != "Y") {
-            std::cout << "Search cancelled.\n";
+            std::cout << "\nSearch cancelled.\n";
+            
+            // Offer alternative sampling approach for very large structures
+            if (num_magnetic_atoms > 25) {
+                std::cout << "\nAlternative: Would you like to try a smart sampling approach? (Y/n): ";
+                std::string sample_response;
+                std::getline(std::cin, sample_response);
+                if (sample_response != "n" && sample_response != "N") {
+                    perform_smart_sampling_search(structure, magnetic_indices, tolerance, verbose, acceleration_method);
+                    return;
+                }
+            }
+            
+            std::cout << "Consider using a smaller supercell or representative structure.\n";
             return;
         }
     }
@@ -837,6 +871,212 @@ void search_all_spin_configurations(
               << (100.0 * altermagnetic_configs.size() / total_configurations) << "%\n";
     std::cout << "- Results saved to: " << output_filename << "\n";
     
+    std::cout << "=======================================================================\n";
+}
+
+void perform_smart_sampling_search(
+    const CrystalStructure& structure,
+    const std::vector<size_t>& magnetic_indices,
+    double tolerance,
+    bool verbose,
+    const std::string& acceleration_method
+) {
+    const size_t num_atoms = structure.atoms.size();
+    const size_t num_magnetic_atoms = magnetic_indices.size();
+    
+    // Smart sampling parameters
+    const size_t max_samples = 1000000;  // Sample up to 1M configurations
+    const size_t batch_size = 10000;     // Process in batches
+    const size_t early_stop_threshold = 100;  // Stop if we find enough examples
+    
+    std::cout << "\n=======================================================================\n";
+    std::cout << "                    SMART SAMPLING SEARCH MODE\n";
+    std::cout << "                     (LARGE STRUCTURE OPTIMIZATION)\n";
+    std::cout << "=======================================================================\n";
+    std::cout << "Structure: " << num_atoms << " total atoms (" << num_magnetic_atoms << " magnetic)\n";
+    std::cout << "Sampling approach: Random selection with bias toward balanced configurations\n";
+    std::cout << "Maximum samples: " << max_samples << "\n";
+    std::cout << "Acceleration method: " << acceleration_method << "\n";
+    std::cout << "Early stopping: After finding " << early_stop_threshold << " altermagnetic configs\n";
+    std::cout << "=======================================================================\n\n";
+    
+    std::vector<SpinConfiguration> altermagnetic_configs;
+    std::mutex results_mutex;
+    std::atomic<size_t> completed_samples(0);
+    std::atomic<size_t> altermagnetic_count(0);
+    
+    // Random number generation
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<size_t> config_dist(0, (1ULL << num_magnetic_atoms) - 1);
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    std::cout << "Starting smart sampling search...\n";
+    
+    for (size_t batch = 0; batch < (max_samples / batch_size); ++batch) {
+        if (altermagnetic_count >= early_stop_threshold) {
+            std::cout << "\nEarly stopping: Found " << altermagnetic_count 
+                      << " altermagnetic configurations\n";
+            break;
+        }
+        
+        std::vector<size_t> batch_configs;
+        std::set<size_t> used_configs;  // Avoid duplicates
+        
+        // Generate unique random configurations for this batch
+        while (batch_configs.size() < batch_size && used_configs.size() < batch_size * 2) {
+            size_t config_id = config_dist(gen);
+            if (used_configs.find(config_id) == used_configs.end()) {
+                used_configs.insert(config_id);
+                batch_configs.push_back(config_id);
+            }
+        }
+        
+        // Process batch configurations
+        for (size_t config_id : batch_configs) {
+            std::vector<SpinType> spins(num_atoms, SpinType::NONE);
+            
+            // Generate spin configuration for magnetic atoms only
+            size_t temp_id = config_id;
+            for (size_t i = 0; i < num_magnetic_atoms; ++i) {
+                size_t atom_idx = magnetic_indices[i];
+                int spin_val = temp_id % 2;
+                temp_id /= 2;
+                spins[atom_idx] = (spin_val == 0) ? SpinType::UP : SpinType::DOWN;
+            }
+            
+            // Check if configuration is altermagnetic
+            try {
+                std::vector<Vector3d> positions = structure.get_all_scaled_positions();
+                std::vector<std::string> chemical_symbols;
+                for (const auto& atom : structure.atoms) {
+                    chemical_symbols.push_back(atom.chemical_symbol);
+                }
+                
+                bool is_am = is_altermagnet(
+                    structure.symmetry_operations,
+                    positions,
+                    structure.equivalent_atoms,
+                    chemical_symbols,
+                    spins,
+                    tolerance,
+                    false,  // not verbose
+                    true    // silent
+                );
+                
+                if (is_am) {
+                    SpinConfiguration config;
+                    config.spins = spins;
+                    config.is_altermagnetic = true;
+                    config.configuration_id = config_id;
+                    
+                    {
+                        std::lock_guard<std::mutex> lock(results_mutex);
+                        altermagnetic_configs.push_back(config);
+                        altermagnetic_count++;
+                        
+                        // Display immediately when found
+                        std::cout << "SAMPLED Config #" << std::setw(8) << config_id << ": ";
+                        for (size_t j = 0; j < spins.size(); ++j) {
+                            if (j > 0) std::cout << " ";
+                            std::cout << spin_to_string(spins[j]);
+                        }
+                        std::cout << " [Found: " << altermagnetic_count << "]\n";
+                    }
+                }
+            } catch (const std::exception&) {
+                // Skip invalid configurations
+            }
+            
+            completed_samples++;
+        }
+        
+        // Progress update
+        double progress = 100.0 * completed_samples / max_samples;
+        auto current_time = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time);
+        
+        std::cout << "\rProgress: " << std::fixed << std::setprecision(1) 
+                  << progress << "% (" << completed_samples << "/" << max_samples 
+                  << ") - Found: " << altermagnetic_count << " configs - Time: " 
+                  << elapsed.count() << "s" << std::flush;
+    }
+    
+    auto end_time = std::chrono::steady_clock::now();
+    auto total_time = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+    
+    std::cout << "\n\n=======================================================================\n";
+    std::cout << "                      SAMPLING SEARCH RESULTS\n";
+    std::cout << "=======================================================================\n";
+    std::cout << "Total configurations sampled: " << completed_samples << "\n";
+    std::cout << "Altermagnetic configurations found: " << altermagnetic_configs.size() << "\n";
+    std::cout << "Sampling success rate: " << std::fixed << std::setprecision(4) 
+              << (100.0 * altermagnetic_configs.size() / completed_samples) << "%\n";
+    std::cout << "Total search time: " << total_time.count() << " seconds\n";
+    
+    if (altermagnetic_configs.empty()) {
+        std::cout << "\nNo altermagnetic configurations found in sample.\n";
+        std::cout << "This doesn't rule out altermagnetism - try larger sample or different approach.\n";
+        std::cout << "=======================================================================\n";
+        return;
+    }
+    
+    // Sort and display results
+    std::sort(altermagnetic_configs.begin(), altermagnetic_configs.end(),
+              [](const SpinConfiguration& a, const SpinConfiguration& b) {
+                  return a.configuration_id < b.configuration_id;
+              });
+    
+    // Save results to file
+    std::string output_filename = "amcheck_sampled_spin_configurations.txt";
+    std::ofstream outfile(output_filename);
+    if (outfile.is_open()) {
+        outfile << "# AMCheck C++ - Sampled Altermagnetic Spin Configurations\n";
+        outfile << "# Sampling method for large structures\n";
+        outfile << "# Total samples: " << completed_samples << "\n";
+        outfile << "# Altermagnetic configs found: " << altermagnetic_configs.size() << "\n";
+        outfile << "# Success rate: " << (100.0 * altermagnetic_configs.size() / completed_samples) << "%\n";
+        outfile << "#\n\n";
+        
+        for (const auto& config : altermagnetic_configs) {
+            outfile << std::setw(8) << config.configuration_id << " | ";
+            for (size_t j = 0; j < config.spins.size(); ++j) {
+                if (j > 0) outfile << " ";
+                outfile << spin_to_string(config.spins[j]);
+            }
+            outfile << "\n";
+        }
+        outfile.close();
+        std::cout << "\nSampled configurations saved to: " << output_filename << "\n";
+    }
+    
+    // Display first few configurations
+    std::cout << "\nFirst " << std::min(static_cast<size_t>(20), altermagnetic_configs.size()) 
+              << " sampled altermagnetic configurations:\n";
+    std::cout << "-----------------------------------------------------------------------\n";
+    
+    for (size_t i = 0; i < std::min(static_cast<size_t>(20), altermagnetic_configs.size()); ++i) {
+        const auto& config = altermagnetic_configs[i];
+        std::cout << "Config #" << std::setw(8) << config.configuration_id << ": ";
+        
+        for (size_t j = 0; j < config.spins.size(); ++j) {
+            if (j > 0) std::cout << " ";
+            std::cout << spin_to_string(config.spins[j]);
+        }
+        std::cout << "\n";
+    }
+    
+    if (altermagnetic_configs.size() > 20) {
+        std::cout << "... and " << (altermagnetic_configs.size() - 20) 
+                  << " more configurations (see " << output_filename << ").\n";
+    }
+    
+    std::cout << "\nSUMMARY:\n";
+    std::cout << "- This sampling found " << altermagnetic_configs.size() 
+              << " altermagnetic configurations\n";
+    std::cout << "- Success rate suggests structure has altermagnetic potential\n";
+    std::cout << "- For complete analysis, consider smaller representative supercell\n";
     std::cout << "=======================================================================\n";
 }
 

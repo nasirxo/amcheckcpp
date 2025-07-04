@@ -107,6 +107,14 @@ void search_all_spin_configurations(
     bool verbose = false
 );
 
+void perform_smart_sampling_search(
+    const CrystalStructure& structure,
+    const std::vector<size_t>& magnetic_indices,
+    double tolerance,
+    bool verbose,
+    const std::string& acceleration_method
+);
+
 void print_matrix_with_labels(const Matrix3d& m, double tol = 1e-3);
 
 // Utility functions
