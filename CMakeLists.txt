@@ -290,6 +290,7 @@ set(AMCHECK_SOURCES
     src/symmetry_operations.cpp
     src/spins.cpp
     src/utils.cpp
+    src/band_analysis.cpp
 )
 
 # Add CUDA sources if available

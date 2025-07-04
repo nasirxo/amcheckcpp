@@ -129,6 +129,46 @@ void print_hall_vector(const Matrix3d& antisymmetric_tensor);
 // GPU availability check
 bool is_gpu_available();
 
+// BAND.dat analysis structures and functions
+struct BandPoint {
+    double k_path;
+    double spin_up_energy;
+    double spin_down_energy;
+    double energy_difference;
+    
+    BandPoint(double k, double up, double down) 
+        : k_path(k), spin_up_energy(up), spin_down_energy(down), energy_difference(std::abs(up - down)) {}
+};
+
+struct BandData {
+    int band_index;
+    std::vector<BandPoint> points;
+    double max_energy_difference;
+    size_t max_diff_point_index;
+    
+    BandData(int index) : band_index(index), max_energy_difference(0.0), max_diff_point_index(0) {}
+};
+
+struct BandAnalysisResult {
+    std::vector<BandData> bands;
+    int nkpts;
+    int nbands;
+    int max_difference_band_index;
+    double max_overall_difference;
+    size_t max_diff_point_index;
+    double threshold_for_altermagnetism;
+    bool is_altermagnetic_by_bands;
+    
+    BandAnalysisResult() : nkpts(0), nbands(0), max_difference_band_index(-1), 
+                          max_overall_difference(0.0), max_diff_point_index(0),
+                          threshold_for_altermagnetism(0.01), is_altermagnetic_by_bands(false) {}
+};
+
+// BAND.dat analysis functions
+BandAnalysisResult analyze_band_file(const std::string& filename, double threshold = 0.01, bool verbose = false);
+void print_band_analysis_summary(const BandAnalysisResult& result);
+void print_detailed_band_analysis(const BandAnalysisResult& result);
+
 // Spglib integration functions
 #ifdef HAVE_SPGLIB
 std::string get_spacegroup_name(const CrystalStructure& structure, double symprec = DEFAULT_TOLERANCE);

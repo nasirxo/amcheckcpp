@@ -17,6 +17,11 @@ namespace amcheck {
     void print_spacegroup_info(const CrystalStructure& structure);
     void print_matrix(const Matrix3d& matrix, const std::string& name, int precision);
     void print_hall_vector(const Matrix3d& antisymmetric_tensor);
+    
+    // Band analysis functions
+    BandAnalysisResult analyze_band_file(const std::string& filename, double threshold, bool verbose);
+    void print_band_analysis_summary(const BandAnalysisResult& result);
+    void print_detailed_band_analysis(const BandAnalysisResult& result);
 }
 
 using namespace amcheck;
@@ -28,10 +33,12 @@ struct Arguments {
     bool show_version = false;
     bool ahc_mode = false;
     bool search_all_mode = false;
+    bool band_analysis_mode = false;
     bool use_gpu = true;  // Default to GPU if available
     bool force_cpu = false;
     double symprec = DEFAULT_TOLERANCE;
     double tolerance = DEFAULT_TOLERANCE;
+    double band_threshold = 0.01;  // Default threshold for band analysis
 };
 
 Arguments parse_arguments(int argc, char* argv[]) {
@@ -50,6 +57,14 @@ Arguments parse_arguments(int argc, char* argv[]) {
             args.ahc_mode = true;
         } else if (arg == "-a" || arg == "--search-all") {
             args.search_all_mode = true;
+        } else if (arg == "-b" || arg == "--band-analysis") {
+            args.band_analysis_mode = true;
+        } else if (arg == "--band-threshold") {
+            if (i + 1 < argc) {
+                args.band_threshold = std::stod(argv[++i]);
+            } else {
+                throw std::invalid_argument("--band-threshold requires a value");
+            }
         } else if (arg == "-s" || arg == "--symprec") {
             if (i + 1 < argc) {
                 args.symprec = std::stod(argv[++i]);
@@ -267,6 +282,30 @@ void process_search_all_analysis(const std::string& filename, const Arguments& a
     }
 }
 
+void process_band_analysis(const std::string& filename, const Arguments& args) {
+    std::cout << "\n";
+    std::cout << "=======================================================================\n";
+    std::cout << "                          BAND ANALYSIS MODE\n";
+    std::cout << "=======================================================================\n";
+    std::cout << "Processing: " << filename << "\n";
+    std::cout << "-----------------------------------------------------------------------\n";
+    
+    try {
+        BandAnalysisResult result = analyze_band_file(filename, args.band_threshold, args.verbose);
+        
+        // Print summary
+        print_band_analysis_summary(result);
+        
+        // Print detailed analysis if verbose
+        if (args.verbose) {
+            print_detailed_band_analysis(result);
+        }
+        
+    } catch (const std::exception& e) {
+        std::cerr << "ERROR: " << e.what() << "\n";
+    }
+}
+
 int main(int argc, char* argv[]) {
     try {
         Arguments args = parse_arguments(argc, argv);
@@ -302,6 +341,8 @@ int main(int argc, char* argv[]) {
                 process_search_all_analysis(filename, args);
             } else if (args.ahc_mode) {
                 process_ahc_analysis(filename, args);
+            } else if (args.band_analysis_mode) {
+                process_band_analysis(filename, args);
             } else {
                 process_altermagnet_analysis(filename, args);
             }

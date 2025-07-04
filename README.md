@@ -67,7 +67,8 @@ Altermagnets are a novel class of magnetic materials that combine properties of 
 ### Analysis Modes
 1. **Standard Mode**: Single configuration altermagnet analysis
 2. **Comprehensive Search Mode** (`-a`): Multithreaded exploration of all possible spin configurations
-3. **Anomalous Hall Coefficient Mode** (`--ahc`): Magnetic transport property analysis
+3. **Band Analysis Mode** (`-b`): Analyze BAND.dat files for altermagnetism without plotting
+4. **Anomalous Hall Coefficient Mode** (`--ahc`): Magnetic transport property analysis
 
 ## Dependencies & System Requirements
 
@@ -424,6 +425,8 @@ amcheck [OPTIONS] <structure_file>
 | `-s <value>` | `--symprec <value>` | Set symmetry precision (default: 1e-3) |
 | `-t <value>` | `--tolerance <value>` | Set numerical tolerance (default: 1e-3) |
 | `-a` | `--search-all` | **Multithreaded comprehensive spin search** |
+| `-b` | `--band-analysis` | **Analyze BAND.dat file for altermagnetism** |
+| `--band-threshold <value>` | | Energy threshold for band analysis (default: 0.01 eV) |
 | `--ahc` | | Anomalous Hall Coefficient analysis mode |
 
 ### Usage Examples
@@ -455,7 +458,24 @@ amcheck [OPTIONS] <structure_file>
 ./build/bin/amcheck -a -t 1e-4 POSCAR
 ```
 
-#### 3. Anomalous Hall Coefficient Analysis
+#### 3. Band Analysis Mode ⭐ NEW!
+```bash
+# Analyze BAND.dat file for altermagnetism detection
+./build/bin/amcheck -b BAND.dat
+
+# Band analysis with custom threshold
+./build/bin/amcheck -b --band-threshold 0.05 BAND.dat
+
+# Verbose band analysis showing detailed statistics
+./build/bin/amcheck -b -v BAND.dat
+
+# Example output shows:
+# - Band index with maximum spin up/down difference
+# - Energy difference at that point
+# - Whether altermagnetism is detected based on threshold
+```
+
+#### 4. Anomalous Hall Coefficient Analysis
 ```bash
 # Standard AHC analysis
 ./build/bin/amcheck --ahc POSCAR
@@ -467,7 +487,7 @@ amcheck [OPTIONS] <structure_file>
 ./build/bin/amcheck --ahc -s 1e-4 -t 1e-4 POSCAR
 ```
 
-#### 4. Advanced Usage Examples
+#### 5. Advanced Usage Examples
 ```bash
 # High precision comprehensive search
 ./build/bin/amcheck -a -v -s 1e-6 -t 1e-6 my_structure.vasp
@@ -542,6 +562,35 @@ Direct                       # Coordinate format (Direct/Cartesian)
 - `structure.vasp`
 - Any filename ending with `.vasp`
 
+### BAND.dat Format Support ⭐ NEW!
+AMCheck C++ now supports direct analysis of VASP BAND.dat files for algorithmic altermagnetism detection:
+
+```
+#K-Path(1/A)         Spin-Up(eV)   Spin-down(eV)
+# NKPTS & NBANDS: 100  45
+# Band-Index    1
+   0.00000    -13.012217    -13.012217
+   0.01727    -13.013155    -13.013484
+   0.05181    -13.024992    -13.026874
+   ...
+# Band-Index    2
+   0.00000    -12.895432    -12.896123
+   ...
+```
+
+### BAND.dat Analysis Features
+- ✅ Automatic parsing of k-points, bands, and energies
+- ✅ Algorithmic detection without plotting requirements
+- ✅ Identification of band with maximum spin up/down difference
+- ✅ Customizable energy threshold for altermagnetism detection
+- ✅ Statistical analysis across all bands and k-points
+- ✅ Detailed reporting of significant bands
+
+### File Naming Conventions for Band Analysis
+- `BAND.dat` (standard VASP band output)
+- `bands.dat` 
+- Any filename ending with `.dat` when used with `-b` flag
+
 ## Output & Results
 
 ### Standard Analysis Output
@@ -605,6 +654,60 @@ Summary:
 - Altermagnetic configurations found: 20280  
 - Success rate: 3.82%
 - Results saved to: POSCAR_amcheck_results_20250103_143025.txt
+=======================================================================
+```
+
+### Band Analysis Output ⭐ NEW!
+For BAND.dat analysis mode:
+
+```
+=======================================================================
+                        BAND ANALYSIS SUMMARY
+=======================================================================
+Number of k-points: 100
+Number of bands: 45
+Bands analyzed: 45
+-----------------------------------------------------------------------
+Maximum spin up/down energy difference: 0.087543 eV
+Found in band: 23
+At k-point index: 67
+K-path coordinate: 0.67355
+Spin-up energy: -8.956544 eV
+Spin-down energy: -9.044087 eV
+-----------------------------------------------------------------------
+Altermagnetism threshold: 0.010000 eV
+
+=======================================================================
+                    RESULT: ALTERMAGNET (BY BANDS)!
+         Significant spin splitting detected in band structure!
+         Maximum difference exceeds threshold of 0.01 eV
+=======================================================================
+```
+
+### Detailed Band Analysis (Verbose Mode)
+When using the `-v` flag with band analysis, additional statistics are provided:
+
+```
+=======================================================================
+                       DETAILED BAND ANALYSIS
+=======================================================================
+Bands ranked by maximum spin up/down difference:
+-----------------------------------------------------------------------
+Rank | Band Index | Max Difference (eV) | Significant?
+-----------------------------------------------------------------------
+   1 |         23 |           0.087543 | YES
+   2 |         22 |           0.074321 | YES
+   3 |         24 |           0.065789 | YES
+   4 |         21 |           0.043210 | YES
+   5 |         25 |           0.032145 | YES
+... and 40 more bands
+-----------------------------------------------------------------------
+Total bands with significant differences (>0.01 eV): 18
+
+Statistics across all k-points and bands:
+  Mean energy difference: 0.023456 eV
+  Median energy difference: 0.015678 eV
+  Total data points analyzed: 4500
 =======================================================================
 ```
 

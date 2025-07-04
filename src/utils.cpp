@@ -169,6 +169,8 @@ void print_usage(const std::string& program_name) {
         std::cout << "   -s, --symprec      Symmetry precision (default: " << DEFAULT_TOLERANCE << ")\n";
         std::cout << "   -t, --tolerance    Numerical tolerance (default: " << DEFAULT_TOLERANCE << ")\n";
         std::cout << "   -a, --search-all   Search all possible spin configurations (multithreaded)\n";
+        std::cout << "   -b, --band-analysis  Analyze BAND.dat file for altermagnetism\n";
+        std::cout << "   --band-threshold   Threshold for band analysis (default: 0.01 eV)\n";
         std::cout << "   --ahc              Analyze Anomalous Hall Coefficient\n";
 #ifdef HAVE_CUDA
         std::cout << "   --gpu              Enable GPU acceleration (currently disabled, falls back to CPU)\n";
@@ -176,12 +178,14 @@ void print_usage(const std::string& program_name) {
 #endif
         std::cout << "\n";
         std::cout << "ARGUMENTS:\n";
-        std::cout << "   structure_file     Crystal structure file (VASP POSCAR format)\n";
+        std::cout << "   structure_file     Crystal structure file (VASP POSCAR format) OR BAND.dat file\n";
         std::cout << "\n";
         std::cout << "EXAMPLES:\n";
         std::cout << "   " << program_name << " POSCAR                    # Basic altermagnet check\n";
         std::cout << "   " << program_name << " -v --symprec 1e-5 POSCAR  # Verbose with custom precision\n";
         std::cout << "   " << program_name << " -a POSCAR                 # Search all spin configurations\n";
+        std::cout << "   " << program_name << " -b BAND.dat               # Analyze band structure for altermagnetism\n";
+        std::cout << "   " << program_name << " -b --band-threshold 0.05 BAND.dat  # Band analysis with custom threshold\n";
         std::cout << "   " << program_name << " --ahc POSCAR              # Anomalous Hall analysis\n";
 #ifdef HAVE_CUDA
         std::cout << "   " << program_name << " -a --gpu POSCAR           # Multithreaded search (GPU disabled)\n";
@@ -208,6 +212,8 @@ void print_usage(const std::string& program_name) {
         std::cout << "   -s, --symprec      Symmetry precision (default: " << DEFAULT_TOLERANCE << ")\n";
         std::cout << "   -t, --tolerance    Numerical tolerance (default: " << DEFAULT_TOLERANCE << ")\n";
         std::cout << "   -a, --search-all   Search all possible spin configurations (multithreaded)\n";
+        std::cout << "   -b, --band-analysis  Analyze BAND.dat file for altermagnetism\n";
+        std::cout << "   --band-threshold   Threshold for band analysis (default: 0.01 eV)\n";
         std::cout << "   --ahc              Analyze Anomalous Hall Coefficient\n";
 #ifdef HAVE_CUDA
         std::cout << "   --gpu              Enable GPU acceleration (currently disabled, falls back to CPU)\n";
@@ -215,12 +221,14 @@ void print_usage(const std::string& program_name) {
 #endif
         std::cout << "\n";
         std::cout << "ARGUMENTS:\n";
-        std::cout << "   structure_file     Crystal structure file (VASP POSCAR format)\n";
+        std::cout << "   structure_file     Crystal structure file (VASP POSCAR format) OR BAND.dat file\n";
         std::cout << "\n";
         std::cout << "EXAMPLES:\n";
         std::cout << "   " << program_name << " POSCAR                    # Basic altermagnet check\n";
         std::cout << "   " << program_name << " -v --symprec 1e-5 POSCAR  # Verbose with custom precision\n";
         std::cout << "   " << program_name << " -a POSCAR                 # Search all spin configurations\n";
+        std::cout << "   " << program_name << " -b BAND.dat               # Analyze band structure for altermagnetism\n";
+        std::cout << "   " << program_name << " -b --band-threshold 0.05 BAND.dat  # Band analysis with custom threshold\n";
         std::cout << "   " << program_name << " --ahc POSCAR              # Anomalous Hall analysis\n";
 #ifdef HAVE_CUDA
         std::cout << "   " << program_name << " -a --gpu POSCAR           # Multithreaded search (GPU disabled)\n";
