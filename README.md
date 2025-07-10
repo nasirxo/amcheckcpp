@@ -247,7 +247,7 @@ chmod +x clean.sh build_msys2.sh
 
 If the automated scripts don't work, you can build manually:
 
-#### Linux/macOS Manual Build
+1#### Linux/macOS Manual Build
 ```bash
 # Create and enter build directory
 mkdir build && cd build
@@ -469,11 +469,42 @@ amcheck [OPTIONS] <structure_file>
 # Verbose band analysis showing detailed statistics
 ./build/bin/amcheck -b -v BAND.dat
 
+# Band analysis with custom x and y axis limits for plotting
+./build/bin/amcheck -b --xmin 0.0 --xmax 1.0 --ymin -5.0 --ymax 5.0 BAND.dat
+
 # Example output shows:
 # - Band index with maximum spin up/down difference
 # - Energy difference at that point
 # - Whether altermagnetism is detected based on threshold
+# - Generation of high-resolution PDF plot with vertical lines showing band splitting
 ```
+
+### Band Analysis Plotting Features
+
+The `-b` option now generates a high-resolution PDF plot showing the band structure with vertical lines indicating maximum band splitting points. This feature helps visualize where altermagnetism manifests in the band structure.
+
+#### Plotting Features
+- **High-resolution PDF Output**: Creates a zoomable PDF file suitable for publication
+- **Vertical Lines for Band Splitting**: Red vertical lines connect spin-up and spin-down bands at maximum splitting points
+- **Energy Difference Labels**: Automatically labels each vertical line with the energy difference value
+- **Customizable Axis Limits**: Control plot range with `--xmin`, `--xmax`, `--ymin`, `--ymax` options
+- **Publication-Quality Styling**: Professional font settings and line styling for presentations and papers
+
+#### Plot Files Generated
+- `BAND_bands_with_arrows.dat`: Data file containing band structure and splitting information
+- `BAND_plot.gnu`: Gnuplot script for generating the plot (can be manually edited if desired)
+- `BAND_bands.pdf`: Final high-resolution PDF output with band structure visualization
+
+#### Example Command with Custom Plot Range
+```bash
+# Generate band plot with custom energy range (-10 to +5 eV)
+./build/bin/amcheck -b --ymin -10 --ymax 5 BAND.dat
+
+# Generate plot with both custom x and y ranges
+./build/bin/amcheck -b --xmin 0.25 --xmax 0.75 --ymin -8 --ymax 3 BAND.dat
+```
+
+The generated PDF shows the spin-up bands (black) and spin-down bands (purple) with prominent red vertical lines at points of maximum band splitting, providing clear visual evidence of altermagnetism in the electronic structure.
 
 #### 4. Anomalous Hall Coefficient Analysis
 ```bash

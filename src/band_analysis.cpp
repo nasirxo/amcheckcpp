@@ -246,11 +246,13 @@ void print_band_analysis_summary(const BandAnalysisResult& result) {
         std::cout << "         Significant spin splitting detected in band structure!\n";
         std::cout << "         Maximum difference exceeds threshold of " 
                   << result.threshold_for_altermagnetism << " eV\n";
+        std::cout << "         High-resolution PDF plot will be generated with vertical lines showing band splitting\n";
     } else {
         std::cout << "                   RESULT: NOT ALTERMAGNET (BY BANDS)\n";
         std::cout << "        No significant spin splitting found in band structure.\n";
         std::cout << "        Maximum difference is below threshold of " 
                   << result.threshold_for_altermagnetism << " eV\n";
+        std::cout << "        High-resolution PDF plot will still be generated to verify results\n";
     }
     std::cout << "=======================================================================\n";
 }
@@ -321,6 +323,226 @@ void print_detailed_band_analysis(const BandAnalysisResult& result) {
     }
     
     std::cout << "=======================================================================\n";
+}
+
+void generate_band_plot_script(const BandAnalysisResult& result, const std::string& input_filename,
+                       const std::pair<double, double>& x_range, 
+                       const std::pair<double, double>& y_range) {
+    // Create output filename based on input
+    std::string base_filename = input_filename;
+    size_t last_dot = base_filename.find_last_of(".");
+    if (last_dot != std::string::npos) {
+        base_filename = base_filename.substr(0, last_dot);
+    }
+    
+    // Check if user provided custom x and y ranges
+    bool custom_x_range = (x_range.first != x_range.second);
+    bool custom_y_range = (y_range.first != y_range.second);
+    
+    std::string script_filename = base_filename + "_plot.gnu";
+    std::string data_filename = base_filename + "_bands_with_arrows.dat";
+    std::string plot_filename = base_filename + "_bands.pdf";
+    
+    // Create the data file with band data and arrows
+    std::ofstream data_file(data_filename);
+    if (!data_file) {
+        std::cerr << "ERROR: Unable to create data file for plotting: " << data_filename << "\n";
+        return;
+    }
+    
+    // Write band data to file in a format suitable for gnuplot
+    data_file << "# k-path  spin-up  spin-down  difference  arrow-start  arrow-end\n";
+    
+    // For each band, write out data points
+    for (const auto& band : result.bands) {
+        data_file << "\n\n# Band " << band.band_index << "\n";
+        
+        // Add diagnostic output
+        std::cout << "Band " << band.band_index << " max splitting: " << band.max_energy_difference 
+                  << " eV at point index " << band.max_diff_point_index 
+                  << " (threshold: " << (result.threshold_for_altermagnetism / 2.0) << " eV)\n";
+        
+        for (size_t i = 0; i < band.points.size(); i++) {
+            const auto& point = band.points[i];
+            
+            // Only add vertical line at the point of maximum splitting for this band
+            // Use a lower threshold to ensure we can see some splitting in the plot
+            bool is_max_splitting_point = (i == band.max_diff_point_index);
+            // Show vertical line if the max difference is above a small threshold
+            bool significant_splitting = band.max_energy_difference > 0.0001; // Very small threshold
+            bool add_arrow = is_max_splitting_point && significant_splitting;
+            
+            double arrow_start = point.spin_up_energy;
+            double arrow_end = point.spin_down_energy;
+            
+            // Make sure arrow direction is consistent (always pointing from up to down)
+            if (arrow_start > arrow_end) {
+                std::swap(arrow_start, arrow_end);
+            }
+            
+            // Write data: k-path  spin-up  spin-down  difference  vertical-line-start  vertical-line-end
+            data_file << point.k_path << " " 
+                      << point.spin_up_energy << " " 
+                      << point.spin_down_energy << " "
+                      << point.energy_difference << " ";
+            
+            // Add vertical line information only at the maximum splitting point
+            if (add_arrow) {
+                // For vertical lines, we want to connect exactly between the two band energies
+                double min_energy = std::min(point.spin_up_energy, point.spin_down_energy);
+                double max_energy = std::max(point.spin_up_energy, point.spin_down_energy);
+                
+                data_file << min_energy << " " << max_energy;
+                
+                // Always add magnitude label for the maximum splitting point
+                data_file << " \"" << std::fixed << std::setprecision(3) << point.energy_difference << " eV\"";
+            } else {
+                data_file << "NaN NaN \"\"";  // No vertical line for non-maximum splitting points
+            }
+            
+            data_file << "\n";
+        }
+        
+        // Add empty line between bands for gnuplot
+        data_file << "\n";
+    }
+    
+    data_file.close();
+    
+    // Debug output to count how many vertical lines were added
+    std::ifstream count_file(data_filename);
+    std::string line;
+    int vertical_line_count = 0;
+    double last_k_path = -1.0;
+    
+    while (std::getline(count_file, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream iss(line);
+        double k, up, down, diff, arrow_start, arrow_end;
+        if (!(iss >> k >> up >> down >> diff)) continue;
+        if (!(iss >> arrow_start >> arrow_end)) continue;
+        
+        // If we have valid arrow coordinates and they're different from NaN
+        if (!std::isnan(arrow_start) && !std::isnan(arrow_end)) {
+            vertical_line_count++;
+            last_k_path = k;
+        }
+    }
+    count_file.close();
+    
+    std::cout << "\nVertical lines added to plot: " << vertical_line_count << "\n";
+    if (vertical_line_count > 0) {
+        std::cout << "Last vertical line at k-path: " << last_k_path << "\n";
+        std::cout << "NOTE: Vertical red lines in the plot connect the spin-up and spin-down bands at maximum splitting points.\n";
+        std::cout << "      Each band with significant splitting will have one vertical line at its maximum splitting point.\n";
+        std::cout << "      The vertical lines connect the actual spin-up and spin-down energies at each maximum splitting k-point.\n";
+        std::cout << "      Energy difference values are displayed next to each vertical line.\n";
+    } else {
+        std::cout << "WARNING: No vertical lines were added to the plot. This suggests either:\n";
+        std::cout << "         1. There is no significant band splitting in any band\n";
+        std::cout << "         2. The threshold for showing splitting might be too high\n";
+    }
+    
+    // Create gnuplot script
+    std::ofstream script_file(script_filename);
+    if (!script_file) {
+        std::cerr << "ERROR: Unable to create gnuplot script file: " << script_filename << "\n";
+        return;
+    }
+    
+    script_file << "#!/usr/bin/gnuplot\n";
+    script_file << "# Auto-generated gnuplot script by AMCheck C++\n";
+    script_file << "# Generated for: " << input_filename << "\n\n";
+    
+    script_file << "# Terminal setup for high-resolution PDF output\n";
+    script_file << "set terminal pdf enhanced color size 8.5,6 font 'Arial,12' linewidth 1.5\n";
+    script_file << "set output '" << plot_filename << "'\n";
+    script_file << "# Increase rendering resolution for better zooming\n";
+    script_file << "set samples 1000\n";
+    script_file << "set isosamples 100\n\n";
+    
+    script_file << "# Plot settings\n";
+    script_file << "set title 'Band Structure with Spin Splitting - " << input_filename << "' font 'Arial,14'\n";
+    script_file << "set xlabel 'k-path' font 'Arial,12'\n";
+    script_file << "set ylabel 'Energy (eV)' font 'Arial,12'\n";
+    script_file << "set grid lw 0.5\n";
+    script_file << "set key outside right font 'Arial,10'\n";
+    script_file << "set border linewidth 1.5\n";
+    script_file << "set tics font 'Arial,10'\n\n";
+    
+    script_file << "# Set range for axes\n";
+    
+    // X-axis range
+    if (custom_x_range) {
+        script_file << "set xrange [" << x_range.first << ":" << x_range.second << "]\n";
+    }
+    
+    // Y-axis range (only set automatically if custom range is not provided)
+    if (custom_y_range) {
+        script_file << "set yrange [" << y_range.first << ":" << y_range.second << "]\n";
+    } else {
+        script_file << "# Find y range dynamically\n";
+        script_file << "min_energy = 1e10\n";
+        script_file << "max_energy = -1e10\n";
+        script_file << "stats '" << data_filename << "' using 2 nooutput\n";
+        script_file << "min_energy = STATS_min\n";
+        script_file << "stats '" << data_filename << "' using 3 nooutput\n";
+        script_file << "if (STATS_min < min_energy) min_energy = STATS_min\n";
+        script_file << "stats '" << data_filename << "' using 2 nooutput\n";
+        script_file << "max_energy = STATS_max\n";
+        script_file << "stats '" << data_filename << "' using 3 nooutput\n";
+        script_file << "if (STATS_max > max_energy) max_energy = STATS_max\n";
+        script_file << "margin = (max_energy - min_energy) * 0.05\n";
+        script_file << "set yrange [min_energy-margin:max_energy+margin]\n";
+    }
+    script_file << "\n";
+    
+    script_file << "# Plot settings for vertical lines indicating band splitting\n";
+    script_file << "set style line 1 lc rgb '#FF0000' lt 1 lw 4.0\n";
+    script_file << "# Define styles for the vertical lines and end points\n";
+    script_file << "set style line 2 lc rgb '#FF0000' lt 1 lw 4.0 pt 7 ps 1.0\n";
+    script_file << "# Show vertical lines more prominently\n";
+    script_file << "set pointsize 1.5\n\n";
+    
+    script_file << "# Plot the data\n";
+    script_file << "plot \\\n";
+    script_file << "    '" << data_filename << "' using 1:2 with lines lc rgb '#000000' lw 2.5 title 'Spin Up', \\\n";
+    script_file << "    '" << data_filename << "' using 1:3 with lines lc rgb '#9400D3' lw 2.5 title 'Spin Down'";
+    
+    // Only add vertical line plotting if we actually have vertical lines to show
+    if (vertical_line_count > 0) {
+        script_file << ", \\\n";
+        // Draw vertical lines between spin-up and spin-down bands at max splitting points
+        script_file << "    '" << data_filename << "' using 1:5:6 with lines lc rgb '#FF0000' lw 4.0 title 'Max Splitting', \\\n";
+        // Add points at the endpoints to make vertical lines more visible
+        script_file << "    '" << data_filename << "' using 1:5:(sprintf('')) with points pt 7 ps 1.2 lc rgb '#FF0000' notitle, \\\n";
+        script_file << "    '" << data_filename << "' using 1:6:(sprintf('')) with points pt 7 ps 1.2 lc rgb '#FF0000' notitle, \\\n";
+        // Add text labels for the energy difference, positioned to the right of the vertical line
+        script_file << "    '" << data_filename << "' using 1:($5 + ($6-$5)/2):7 with labels offset 3,0 font 'Arial,10' tc rgb '#FF0000' notitle";
+    }
+    
+    script_file << "\n";
+    
+    script_file.close();
+    
+    std::cout << "\nGenerated plotting files:\n";
+    std::cout << "- Data file: " << data_filename << "\n";
+    std::cout << "- Gnuplot script: " << script_filename << "\n";
+    std::cout << "- Output high-resolution PDF will be: " << plot_filename << " (supports deep zooming)\n";
+    
+    // Report on axis limits
+    if (custom_x_range) {
+        std::cout << "- X-axis range: [" << x_range.first << ", " << x_range.second << "]\n";
+    } else {
+        std::cout << "- X-axis range: [auto]\n";
+    }
+    if (custom_y_range) {
+        std::cout << "- Y-axis range: [" << y_range.first << ", " << y_range.second << "]\n";
+    } else {
+        std::cout << "- Y-axis range: [auto]\n";
+    }
+    
+    std::cout << "To create plot, run: gnuplot " << script_filename << "\n";
 }
 
 } // namespace amcheck

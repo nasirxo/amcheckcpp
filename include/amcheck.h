@@ -170,6 +170,9 @@ struct BandAnalysisResult {
 BandAnalysisResult analyze_band_file(const std::string& filename, double threshold = 0.01, bool verbose = false);
 void print_band_analysis_summary(const BandAnalysisResult& result);
 void print_detailed_band_analysis(const BandAnalysisResult& result);
+void generate_band_plot_script(const BandAnalysisResult& result, const std::string& input_filename,
+                      const std::pair<double, double>& x_range = {0.0, 0.0}, 
+                      const std::pair<double, double>& y_range = {0.0, 0.0});
 
 // Spglib integration functions
 #ifdef HAVE_SPGLIB

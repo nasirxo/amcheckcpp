@@ -39,6 +39,10 @@ struct Arguments {
     double symprec = DEFAULT_TOLERANCE;
     double tolerance = DEFAULT_TOLERANCE;
     double band_threshold = 0.01;  // Default threshold for band analysis
+    double xmin = 0.0;  // X-axis minimum for band plot
+    double xmax = 0.0;  // X-axis maximum for band plot (0.0 means auto)
+    double ymin = 0.0;  // Y-axis minimum for band plot
+    double ymax = 0.0;  // Y-axis maximum for band plot (0.0 means auto)
 };
 
 Arguments parse_arguments(int argc, char* argv[]) {
@@ -64,6 +68,30 @@ Arguments parse_arguments(int argc, char* argv[]) {
                 args.band_threshold = std::stod(argv[++i]);
             } else {
                 throw std::invalid_argument("--band-threshold requires a value");
+            }
+        } else if (arg == "--xmin") {
+            if (i + 1 < argc) {
+                args.xmin = std::stod(argv[++i]);
+            } else {
+                throw std::invalid_argument("--xmin requires a value");
+            }
+        } else if (arg == "--xmax") {
+            if (i + 1 < argc) {
+                args.xmax = std::stod(argv[++i]);
+            } else {
+                throw std::invalid_argument("--xmax requires a value");
+            }
+        } else if (arg == "--ymin") {
+            if (i + 1 < argc) {
+                args.ymin = std::stod(argv[++i]);
+            } else {
+                throw std::invalid_argument("--ymin requires a value");
+            }
+        } else if (arg == "--ymax") {
+            if (i + 1 < argc) {
+                args.ymax = std::stod(argv[++i]);
+            } else {
+                throw std::invalid_argument("--ymax requires a value");
             }
         } else if (arg == "-s" || arg == "--symprec") {
             if (i + 1 < argc) {
@@ -300,6 +328,9 @@ void process_band_analysis(const std::string& filename, const Arguments& args) {
         if (args.verbose) {
             print_detailed_band_analysis(result);
         }
+        
+        // Generate gnuplot script for visualizing bands with arrows
+        generate_band_plot_script(result, filename, {args.xmin, args.xmax}, {args.ymin, args.ymax});
         
     } catch (const std::exception& e) {
         std::cerr << "ERROR: " << e.what() << "\n";
