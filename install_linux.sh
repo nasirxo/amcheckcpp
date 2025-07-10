@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # AMCheck C++ Installation Script for Linux
-# This script copies the executable to /usr/local/bin for global access
+# This script copies the executable to /usr/bin for global access
 
 set -e
 
@@ -11,6 +11,25 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Show help
+show_help() {
+    echo "AMCheck C++ Installation Script for Linux"
+    echo
+    echo "Usage: $0 [OPTIONS]"
+    echo
+    echo "OPTIONS:"
+    echo "  --help, -h        Show this help message"
+    echo "  --uninstall, -u   Uninstall AMCheck C++ from system"
+    echo
+    echo "Installation Locations:"
+    echo "  System-wide:      /usr/bin/amcheckcpp (requires sudo)"
+    echo "  User-local:       ~/.local/bin/amcheckcpp (fallback if no sudo)"
+    echo
+    echo "Examples:"
+    echo "  $0                # Install AMCheck C++ as 'amcheckcpp'"
+    echo "  $0 --uninstall    # Remove AMCheck C++"
+}
 
 # Function to print colored output
 print_status() {
@@ -32,13 +51,13 @@ print_error() {
 # Check if running as root for system installation
 check_permissions() {
     if [[ $EUID -eq 0 ]]; then
-        INSTALL_DIR="/usr/local/bin"
+        INSTALL_DIR="/usr/bin"
         INSTALL_TYPE="system-wide"
         USE_SUDO=""
     else
         # Check if user has sudo access
         if sudo -n true 2>/dev/null; then
-            INSTALL_DIR="/usr/local/bin"
+            INSTALL_DIR="/usr/bin"
             INSTALL_TYPE="system-wide (with sudo)"
             USE_SUDO="sudo"
         else
@@ -53,8 +72,10 @@ check_permissions() {
 
 # Find the executable
 find_executable() {
+    # Check for the primary build location first, as mentioned in the example
     if [[ -f "build/bin/amcheck" ]]; then
         EXECUTABLE="build/bin/amcheck"
+        print_status "Found executable in main build directory"
     elif [[ -f "bin/amcheck" ]]; then
         EXECUTABLE="bin/amcheck"
     elif [[ -f "amcheck" ]]; then
@@ -65,27 +86,31 @@ find_executable() {
     elif [[ -f "compiled_binaries/linux/amcheck" ]]; then
         EXECUTABLE="compiled_binaries/linux/amcheck"
         print_status "Using pre-compiled Linux binary from compiled_binaries/linux/"
+    elif [[ -f "compiled_binaries/LINUX/amcheck" ]]; then
+        EXECUTABLE="compiled_binaries/LINUX/amcheck"
+        print_status "Using pre-compiled Linux binary from compiled_binaries/LINUX/"
     elif [[ -f "compiled_binaries/$(uname -m)/amcheck" ]]; then
         EXECUTABLE="compiled_binaries/$(uname -m)/amcheck"
         print_status "Using pre-compiled binary for $(uname -m) from compiled_binaries/$(uname -m)/"
     else
         print_error "AMCheck executable not found!"
         print_error "Please build the project first using: ./build.sh"
-        print_error "Expected locations: build/bin/amcheck, bin/amcheck, amcheck,"
-        print_error "                   or compiled_binaries/[linux|$(uname -m)]/amcheck"
+        print_error "Expected primary location: build/bin/amcheck"
+        print_error "Other possible locations: bin/amcheck, amcheck,"
+        print_error "                        or compiled_binaries/[linux|LINUX|$(uname -m)]/amcheck"
         exit 1
     fi
 }
 
 # Check if system binary directory has AMCheck and offer to use compiled binaries
 check_system_binaries() {
-    # Check if amcheck already exists in system paths
-    if command -v amcheck &> /dev/null; then
-        EXISTING_PATH=$(which amcheck)
-        print_warning "AMCheck already installed at: $EXISTING_PATH"
+    # Check if amcheckcpp already exists in system paths
+    if command -v amcheckcpp &> /dev/null; then
+        EXISTING_PATH=$(which amcheckcpp)
+        print_warning "AMCheck C++ already installed at: $EXISTING_PATH"
         
         # Check version if possible
-        if EXISTING_VERSION=$(amcheck --version 2>/dev/null | head -n1); then
+        if EXISTING_VERSION=$(amcheckcpp --version 2>/dev/null | head -n1); then
             print_status "Existing version: $EXISTING_VERSION"
         fi
         
@@ -98,10 +123,10 @@ check_system_binaries() {
         fi
     fi
     
-    # If /usr/bin or /usr/local/bin is empty of amcheck, suggest using compiled binaries
-    if [[ ! -f "/usr/bin/amcheck" && ! -f "/usr/local/bin/amcheck" ]]; then
+    # If /usr/bin is empty of amcheckcpp, suggest using compiled binaries
+    if [[ ! -f "/usr/bin/amcheckcpp" ]]; then
         if [[ -d "compiled_binaries" ]]; then
-            print_status "System binary directories are clean"
+            print_status "System binary directory is clean"
             print_status "Found compiled_binaries directory - checking for pre-built binaries"
             
             # List available binaries
@@ -115,12 +140,12 @@ check_system_binaries() {
 
 # Install function
 install_amcheck() {
-    print_status "Installing AMCheck C++ to $INSTALL_DIR..."
+    print_status "Installing AMCheck C++ to $INSTALL_DIR as amcheckcpp..."
     
-    $USE_SUDO cp "$EXECUTABLE" "$INSTALL_DIR/amcheck"
-    $USE_SUDO chmod +x "$INSTALL_DIR/amcheck"
+    $USE_SUDO cp "$EXECUTABLE" "$INSTALL_DIR/amcheckcpp"
+    $USE_SUDO chmod +x "$INSTALL_DIR/amcheckcpp"
     
-    print_success "Executable copied to $INSTALL_DIR/amcheck"
+    print_success "Executable copied to $INSTALL_DIR/amcheckcpp"
 }
 
 # Update PATH if needed
@@ -154,29 +179,29 @@ verify_installation() {
     # Add current install dir to PATH for this verification
     export PATH="$INSTALL_DIR:$PATH"
     
-    if command -v amcheck &> /dev/null; then
-        print_success "AMCheck is now globally accessible!"
+    if command -v amcheckcpp &> /dev/null; then
+        print_success "AMCheck C++ is now globally accessible as 'amcheckcpp'!"
         print_status "Testing executable..."
         
-        if amcheck --version &> /dev/null; then
+        if amcheckcpp --version &> /dev/null; then
             print_success "Installation successful!"
             echo
             echo "=================================================================="
             echo "                     Usage Examples:"
             echo "=================================================================="
-            echo "  amcheck --help                    # Show help"
-            echo "  amcheck --version                 # Show version"
-            echo "  amcheck POSCAR                    # Analyze crystal structure"
-            echo "  amcheck -b BAND.dat               # Analyze band structure"
-            echo "  amcheck -a POSCAR                 # Comprehensive search"
-            echo "  amcheck --ahc POSCAR              # Anomalous Hall analysis"
+            echo "  amcheckcpp --help                    # Show help"
+            echo "  amcheckcpp --version                 # Show version"
+            echo "  amcheckcpp POSCAR                    # Analyze crystal structure"
+            echo "  amcheckcpp -b BAND.dat               # Analyze band structure" 
+            echo "  amcheckcpp -a POSCAR                 # Comprehensive search"
+            echo "  amcheckcpp --ahc POSCAR              # Anomalous Hall analysis"
             echo "=================================================================="
         else
             print_warning "Executable installed but may have dependency issues"
-            print_status "Try running: amcheck --help"
+            print_status "Try running: amcheckcpp --help"
         fi
     else
-        print_error "Installation failed - amcheck not found in PATH"
+        print_error "Installation failed - amcheckcpp not found in PATH"
         print_error "You may need to restart your terminal or update PATH manually"
         exit 1
     fi
@@ -186,11 +211,11 @@ verify_installation() {
 uninstall_amcheck() {
     print_status "Uninstalling AMCheck C++..."
     
-    if [[ -f "$INSTALL_DIR/amcheck" ]]; then
-        $USE_SUDO rm -f "$INSTALL_DIR/amcheck"
-        print_success "AMCheck removed from $INSTALL_DIR"
+    if [[ -f "$INSTALL_DIR/amcheckcpp" ]]; then
+        $USE_SUDO rm -f "$INSTALL_DIR/amcheckcpp"
+        print_success "AMCheck C++ removed from $INSTALL_DIR"
     else
-        print_warning "AMCheck not found in $INSTALL_DIR"
+        print_warning "AMCheck C++ not found in $INSTALL_DIR"
     fi
 }
 
@@ -246,15 +271,15 @@ show_help() {
     echo
     echo "OPTIONS:"
     echo "  --help, -h        Show this help message"
-    echo "  --uninstall, -u   Uninstall AMCheck from system"
+    echo "  --uninstall, -u   Uninstall AMCheck C++ from system"
     echo
     echo "Installation Locations:"
-    echo "  System-wide:      /usr/local/bin (requires sudo)"
-    echo "  User-local:       ~/.local/bin (fallback if no sudo)"
+    echo "  System-wide:      /usr/bin/amcheckcpp (requires sudo)"
+    echo "  User-local:       ~/.local/bin/amcheckcpp (fallback if no sudo)"
     echo
     echo "Examples:"
-    echo "  $0                # Install AMCheck"
-    echo "  $0 --uninstall    # Remove AMCheck"
+    echo "  $0                # Install AMCheck C++ as 'amcheckcpp'"
+    echo "  $0 --uninstall    # Remove AMCheck C++"
 }
 
 # Check arguments
