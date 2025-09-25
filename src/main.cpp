@@ -330,7 +330,65 @@ void process_band_analysis(const std::string& filename, const Arguments& args) {
         }
         
         // Generate gnuplot script for visualizing bands with arrows
-        generate_band_plot_script(result, filename, {args.xmin, args.xmax}, {args.ymin, args.ymax});
+        
+        // Check if we have a crystal structure file to extract symmetry information
+        std::string poscar_filename = filename;
+        size_t dot_pos = poscar_filename.find_last_of(".");
+        if (dot_pos != std::string::npos) {
+            poscar_filename = poscar_filename.substr(0, dot_pos) + ".poscar";
+        }
+        
+        // Try to load crystal structure to determine k-points
+        std::map<double, std::string> kpoint_labels;
+        try {
+            CrystalStructure structure;
+            structure.read_from_file(poscar_filename);
+            
+#ifdef HAVE_SPGLIB
+            // Get space group and lattice system using spglib
+            analyze_symmetry_spglib(structure, args.tolerance);
+            
+            // Extract space group number from the name (e.g. "Pm-3m (221)")
+            std::string spg_name = get_spacegroup_name(structure, args.tolerance);
+            int spg_num = 0;
+            size_t paren_pos = spg_name.find_last_of("(");
+            if (paren_pos != std::string::npos) {
+                std::string spg_num_str = spg_name.substr(paren_pos + 1);
+                spg_num_str = spg_num_str.substr(0, spg_num_str.find_first_of(")"));
+                try {
+                    spg_num = std::stoi(spg_num_str);
+                } catch (...) {
+                    spg_num = 0;
+                }
+            }
+            
+            // Determine lattice system from space group number
+            std::string lattice_system;
+            if (spg_num >= 1 && spg_num <= 2) lattice_system = "triclinic";
+            else if (spg_num >= 3 && spg_num <= 15) lattice_system = "monoclinic";
+            else if (spg_num >= 16 && spg_num <= 74) lattice_system = "orthorhombic";
+            else if (spg_num >= 75 && spg_num <= 142) lattice_system = "tetragonal";
+            else if (spg_num >= 143 && spg_num <= 167) lattice_system = "trigonal";
+            else if (spg_num >= 168 && spg_num <= 194) lattice_system = "hexagonal";
+            else if (spg_num >= 195 && spg_num <= 230) lattice_system = "cubic";
+            
+            if (spg_num > 0 && !lattice_system.empty()) {
+                std::cout << "\nDetected crystal information:\n";
+                std::cout << "  Space group: " << spg_name << "\n";
+                std::cout << "  Lattice system: " << lattice_system << "\n";
+                
+                // Generate k-points based on crystal symmetry
+                kpoint_labels = get_high_symmetry_kpoints(spg_num, lattice_system);
+                
+                std::cout << "  Using high symmetry k-points for this structure.\n";
+            }
+#endif
+        } catch (const std::exception& e) {
+            std::cout << "\nCould not automatically determine high symmetry k-points: " << e.what() << "\n";
+            std::cout << "Using default k-point labeling.\n";
+        }
+        
+        generate_band_plot_script(result, filename, {args.xmin, args.xmax}, {args.ymin, args.ymax}, kpoint_labels);
         
     } catch (const std::exception& e) {
         std::cerr << "ERROR: " << e.what() << "\n";

@@ -170,9 +170,15 @@ struct BandAnalysisResult {
 BandAnalysisResult analyze_band_file(const std::string& filename, double threshold = 0.01, bool verbose = false);
 void print_band_analysis_summary(const BandAnalysisResult& result);
 void print_detailed_band_analysis(const BandAnalysisResult& result);
+std::map<double, std::string> get_high_symmetry_kpoints(
+        int spacegroup,
+        const std::string& lattice_system,
+        const std::vector<std::array<double, 3>>& reciprocal_vectors = {});
+
 void generate_band_plot_script(const BandAnalysisResult& result, const std::string& input_filename,
                       const std::pair<double, double>& x_range = {0.0, 0.0}, 
-                      const std::pair<double, double>& y_range = {0.0, 0.0});
+                      const std::pair<double, double>& y_range = {0.0, 0.0},
+                      const std::map<double, std::string>& kpoint_labels = {});
 
 // Spglib integration functions
 #ifdef HAVE_SPGLIB

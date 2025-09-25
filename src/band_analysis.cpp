@@ -246,7 +246,7 @@ void print_band_analysis_summary(const BandAnalysisResult& result) {
         std::cout << "         Significant spin splitting detected in band structure!\n";
         std::cout << "         Maximum difference exceeds threshold of " 
                   << result.threshold_for_altermagnetism << " eV\n";
-        std::cout << "         High-resolution PDF plot will be generated with vertical lines showing band splitting\n";
+        std::cout << "         High-resolution PDF plot will be generated with arrows showing band splitting\n";
     } else {
         std::cout << "                   RESULT: NOT ALTERMAGNET (BY BANDS)\n";
         std::cout << "        No significant spin splitting found in band structure.\n";
@@ -325,9 +325,89 @@ void print_detailed_band_analysis(const BandAnalysisResult& result) {
     std::cout << "=======================================================================\n";
 }
 
+/**
+ * Determines high symmetry k-points in the Brillouin zone based on crystal structure and space group
+ * @param spacegroup Space group number (1-230)
+ * @param lattice_system One of: cubic, tetragonal, orthorhombic, hexagonal, rhombohedral, monoclinic, triclinic
+ * @param reciprocal_vectors Optional reciprocal lattice vectors for more precise calculations
+ * @return Map of k-path coordinates to k-point labels
+ */
+std::map<double, std::string> get_high_symmetry_kpoints(
+        int spacegroup,
+        const std::string& lattice_system,
+        const std::vector<std::array<double, 3>>& reciprocal_vectors = {}) {
+    
+    std::map<double, std::string> kpoints;
+    
+    // Default points if we can't determine from symmetry
+    if (spacegroup <= 0 || lattice_system.empty()) {
+        kpoints[0.000] = "M";
+        kpoints[0.691] = "{/Symbol G}";
+        kpoints[1.382] = "M'";
+        return kpoints;
+    }
+    
+    // Determine high symmetry points based on lattice system and space group
+    if (lattice_system == "cubic") {
+        // FCC or BCC or SC Brillouin zone path
+        if (spacegroup >= 195 && spacegroup <= 230) {
+            // Cubic (FCC): Γ-X-W-K-Γ-L-U-W-L-K|U-X path
+            kpoints[0.000] = "{/Symbol G}";
+            kpoints[0.200] = "X";
+            kpoints[0.400] = "W";
+            kpoints[0.600] = "K";
+            kpoints[0.800] = "{/Symbol G}";
+            kpoints[1.000] = "L";
+        } else if (spacegroup >= 1 && spacegroup <= 194) {
+            // Different path for SC or BCC
+            kpoints[0.000] = "{/Symbol G}";
+            kpoints[0.333] = "X";
+            kpoints[0.667] = "M";
+            kpoints[1.000] = "{/Symbol G}";
+        }
+    } else if (lattice_system == "hexagonal" || lattice_system == "rhombohedral") {
+        // Hexagonal Brillouin zone path: Γ-M-K-Γ-A-L-H-A|L-M|K-H
+        kpoints[0.000] = "{/Symbol G}";
+        kpoints[0.333] = "M";
+        kpoints[0.667] = "K";
+        kpoints[1.000] = "{/Symbol G}";
+    } else if (lattice_system == "tetragonal") {
+        // Tetragonal Brillouin zone path
+        kpoints[0.000] = "{/Symbol G}";
+        kpoints[0.250] = "X";
+        kpoints[0.500] = "M";
+        kpoints[0.750] = "Z";
+        kpoints[1.000] = "{/Symbol G}";
+    } else if (lattice_system == "orthorhombic") {
+        // Orthorhombic path
+        kpoints[0.000] = "{/Symbol G}";
+        kpoints[0.250] = "X";
+        kpoints[0.500] = "S";
+        kpoints[0.750] = "Y";
+        kpoints[1.000] = "{/Symbol G}";
+    } else if (lattice_system == "monoclinic") {
+        // Monoclinic path
+        kpoints[0.000] = "{/Symbol G}";
+        kpoints[0.333] = "Y";
+        kpoints[0.667] = "C";
+        kpoints[1.000] = "{/Symbol G}";
+    } else if (lattice_system == "triclinic") {
+        // Triclinic (simplest path)
+        kpoints[0.000] = "{/Symbol G}";
+        kpoints[0.500] = "Z";
+        kpoints[1.000] = "{/Symbol G}";
+    }
+    
+    // If reciprocal lattice vectors are provided, we could do more precise calculations here
+    // by mapping the special points to their actual k-path values
+    
+    return kpoints;
+}
+
 void generate_band_plot_script(const BandAnalysisResult& result, const std::string& input_filename,
                        const std::pair<double, double>& x_range, 
-                       const std::pair<double, double>& y_range) {
+                       const std::pair<double, double>& y_range,
+                       const std::map<double, std::string>& kpoint_labels = {}) {
     // Create output filename based on input
     std::string base_filename = input_filename;
     size_t last_dot = base_filename.find_last_of(".");
@@ -430,15 +510,15 @@ void generate_band_plot_script(const BandAnalysisResult& result, const std::stri
     }
     count_file.close();
     
-    std::cout << "\nVertical lines added to plot: " << vertical_line_count << "\n";
+    std::cout << "\nArrows added to plot: " << vertical_line_count << "\n";
     if (vertical_line_count > 0) {
-        std::cout << "Last vertical line at k-path: " << last_k_path << "\n";
-        std::cout << "NOTE: Vertical red lines in the plot connect the spin-up and spin-down bands at maximum splitting points.\n";
-        std::cout << "      Each band with significant splitting will have one vertical line at its maximum splitting point.\n";
-        std::cout << "      The vertical lines connect the actual spin-up and spin-down energies at each maximum splitting k-point.\n";
-        std::cout << "      Energy difference values are displayed next to each vertical line.\n";
+        std::cout << "Last arrow at k-path: " << last_k_path << "\n";
+        std::cout << "NOTE: Blue arrows in the plot connect the spin-up and spin-down bands at maximum splitting points.\n";
+        std::cout << "      Each band with significant splitting will have one arrow at its maximum splitting point.\n";
+        std::cout << "      The arrows connect the actual spin-up and spin-down energies at each maximum splitting k-point.\n";
+        std::cout << "      Energy difference values are displayed next to each arrow.\n";
     } else {
-        std::cout << "WARNING: No vertical lines were added to the plot. This suggests either:\n";
+        std::cout << "WARNING: No arrows were added to the plot. This suggests either:\n";
         std::cout << "         1. There is no significant band splitting in any band\n";
         std::cout << "         2. The threshold for showing splitting might be too high\n";
     }
@@ -464,16 +544,42 @@ void generate_band_plot_script(const BandAnalysisResult& result, const std::stri
     script_file << "# Plot settings\n";
     script_file << "set zeroaxis ls 1.5 dt 2 lw 2.5 lc rgb \"gray\"\n";
     
-    // Add some vertical lines to mark high symmetry points if appropriate
-    script_file << "set arrow from 0.000,graph(0,0) to 0.000,graph(1,1) nohead ls 1 lt 1 lw 2 lc rgb \"gray\"\n";
-    script_file << "set arrow from 0.691,graph(0,0) to 0.691,graph(1,1) nohead ls 1 dt 2 lt 1 lw 2 lc rgb \"gray\"\n";
-    script_file << "set arrow from 1.382,graph(0,0) to 1.382,graph(1,1) nohead ls 1 dt 2 lt 1 lw 2 lc rgb \"gray\"\n";
     script_file << "set zeroaxis ls 1.5 dt 2 lw 2.5 lc rgb \"gray\"\n";
     
-    script_file << "set xtics font \"Arial-Bold,15\"\n";
-    script_file << "set ytics font \"Arial-Bold,15\"\n";
-    script_file << "# Axes tics and labels\n";
-    script_file << "set xtics (\"M\" 0.000, \"{/Symbol G}\" 0.691 , \"M'\" 1.382 ,) nomirror\n";
+    // Add vertical lines and labels for high symmetry points - either from provided map or default
+    if (kpoint_labels.empty()) {
+        // Use default high symmetry points if none provided
+        script_file << "set arrow from 0.000,graph(0,0) to 0.000,graph(1,1) nohead ls 1 lt 1 lw 2 lc rgb \"gray\"\n";
+        script_file << "set arrow from 0.691,graph(0,0) to 0.691,graph(1,1) nohead ls 1 dt 2 lt 1 lw 2 lc rgb \"gray\"\n";
+        script_file << "set arrow from 1.382,graph(0,0) to 1.382,graph(1,1) nohead ls 1 dt 2 lt 1 lw 2 lc rgb \"gray\"\n";
+        script_file << "set xtics font \"Arial-Bold,15\"\n";
+        script_file << "set ytics font \"Arial-Bold,15\"\n";
+        script_file << "# Axes tics and labels\n";
+        script_file << "set xtics (\"M\" 0.000, \"{/Symbol G}\" 0.691 , \"M'\" 1.382 ,) nomirror\n";
+    } else {
+        // Use the provided high symmetry k-points
+        script_file << "set xtics font \"Arial-Bold,15\"\n";
+        script_file << "set ytics font \"Arial-Bold,15\"\n";
+        script_file << "# Axes tics and labels from crystal symmetry\n";
+        
+        // First add vertical lines for each high symmetry point
+        for (const auto& kp : kpoint_labels) {
+            script_file << "set arrow from " << kp.first << ",graph(0,0) to " 
+                     << kp.first << ",graph(1,1) nohead ls 1 " 
+                     << (kp.second == "{/Symbol G}" ? "lt 1" : "dt 2") 
+                     << " lw 2 lc rgb \"gray\"\n";
+        }
+        
+        // Then create the xtics labels
+        script_file << "set xtics (";
+        bool first = true;
+        for (const auto& kp : kpoint_labels) {
+            if (!first) script_file << ", ";
+            script_file << "\"" << kp.second << "\" " << kp.first;
+            first = false;
+        }
+        script_file << ") nomirror\n";
+    }
     script_file << "set ylabel \"E - E_{F} (eV)\" font \"Times-Bold,20\" rotate by 90 \n";
     script_file << "set label 2 \"(High Sym KP)\" at graph -0.45, graph 1.1 center norotate font ',35' tc rgb \"black\"\n";
     script_file << "unset grid \n";
