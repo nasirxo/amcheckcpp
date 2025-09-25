@@ -470,8 +470,8 @@ void generate_band_plot_script(const BandAnalysisResult& result, const std::stri
     script_file << "set arrow from 1.382,graph(0,0) to 1.382,graph(1,1) nohead ls 1 dt 2 lt 1 lw 2 lc rgb \"gray\"\n";
     script_file << "set zeroaxis ls 1.5 dt 2 lw 2.5 lc rgb \"gray\"\n";
     
-    script_file << "set xtics font \"Arial-Bold,26\"\n";
-    script_file << "set ytics font \"Arial-Bold,26\"\n";
+    script_file << "set xtics font \"Arial-Bold,15\"\n";
+    script_file << "set ytics font \"Arial-Bold,15\"\n";
     script_file << "# Axes tics and labels\n";
     script_file << "set xtics (\"M\" 0.000, \"{/Symbol G}\" 0.691 , \"M'\" 1.382 ,) nomirror\n";
     script_file << "set ylabel \"E - E_{F} (eV)\" font \"Times-Bold,20\" rotate by 90 \n";
@@ -490,7 +490,7 @@ void generate_band_plot_script(const BandAnalysisResult& result, const std::stri
         script_file << "set xrange [" << x_range.first << ":" << x_range.second << "]\n";
     } else {
         // Default X-range from 0 to the maximum k-path value (usually around 1.4)
-        //script_file << "set xrange[0.0:1.39]\n";
+        script_file << "#set xrange[0.0:1.39]\n";
     }
     
     // Y-axis range (only set automatically if custom range is not provided)
@@ -537,7 +537,7 @@ void generate_band_plot_script(const BandAnalysisResult& result, const std::stri
         script_file << "    '" << data_filename << "' using 1:5:(sprintf('')) with points pt 7 ps 0.5 lc rgb 'blue' notitle, \\\n";
         script_file << "    '" << data_filename << "' using 1:6:(sprintf('')) with points pt 7 ps 0.5 lc rgb 'blue' notitle, \\\n";
         // Add text labels for the energy difference, positioned to the right of the arrow
-        script_file << "    '" << data_filename << "' using 1:($5 + ($6-$5)/2):7 with labels offset 6,0 font 'Arial,18' tc rgb 'blue' notitle";
+        script_file << "    '" << data_filename << "' using 1:($5 + ($6-$5)/2):7 with labels offset 6,0 font 'Arial,13' tc rgb 'blue' notitle";
     }
     
     script_file << "\n";
