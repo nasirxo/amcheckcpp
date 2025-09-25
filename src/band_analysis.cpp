@@ -455,26 +455,42 @@ void generate_band_plot_script(const BandAnalysisResult& result, const std::stri
     script_file << "# Generated for: " << input_filename << "\n\n";
     
     script_file << "# Terminal setup for high-resolution PDF output\n";
-    script_file << "set terminal pdf enhanced color size 8.5,6 font 'Arial,12' linewidth 1.5\n";
+    script_file << "set terminal pdf enhanced color size 5,4 font 'Arial,12' linewidth 1.5\n";
     script_file << "set output '" << plot_filename << "'\n";
     script_file << "# Increase rendering resolution for better zooming\n";
     script_file << "set samples 1000\n";
     script_file << "set isosamples 100\n\n";
     
     script_file << "# Plot settings\n";
-    script_file << "set title 'Band Structure with Spin Splitting - " << input_filename << "' font 'Arial,14'\n";
-    script_file << "set xlabel 'k-path' font 'Arial,12'\n";
-    script_file << "set ylabel 'Energy (eV)' font 'Arial,12'\n";
-    script_file << "set grid lw 0.5\n";
-    script_file << "set key outside right font 'Arial,10'\n";
+    script_file << "set zeroaxis ls 1.5 dt 2 lw 2.5 lc rgb \"gray\"\n";
+    
+    // Add some vertical lines to mark high symmetry points if appropriate
+    script_file << "set arrow from 0.000,graph(0,0) to 0.000,graph(1,1) nohead ls 1 lt 1 lw 2 lc rgb \"gray\"\n";
+    script_file << "set arrow from 0.691,graph(0,0) to 0.691,graph(1,1) nohead ls 1 dt 2 lt 1 lw 2 lc rgb \"gray\"\n";
+    script_file << "set arrow from 1.382,graph(0,0) to 1.382,graph(1,1) nohead ls 1 dt 2 lt 1 lw 2 lc rgb \"gray\"\n";
+    script_file << "set zeroaxis ls 1.5 dt 2 lw 2.5 lc rgb \"gray\"\n";
+    
+    script_file << "set xtics font \"Arial-Bold,26\"\n";
+    script_file << "set ytics font \"Arial-Bold,26\"\n";
+    script_file << "# Axes tics and labels\n";
+    script_file << "set xtics (\"M\" 0.000, \"{/Symbol G}\" 0.691 , \"M'\" 1.382 ,) nomirror\n";
+    script_file << "set ylabel \"E - E_{F} (eV)\" font \"Times-Bold,20\" rotate by 90 \n";
+    script_file << "set label 2 \"(High Sym KP)\" at graph -0.45, graph 1.1 center norotate font ',35' tc rgb \"black\"\n";
+    script_file << "unset grid \n";
+    script_file << "#set key right font 'Arial,10'\n";
     script_file << "set border linewidth 1.5\n";
-    script_file << "set tics font 'Arial,10'\n\n";
+    script_file << "#set tics font 'Arial,10'\n";
+    script_file << "set ylabel offset -3\n";
+    script_file << "set lmargin 12\n\n";
     
     script_file << "# Set range for axes\n";
     
     // X-axis range
     if (custom_x_range) {
         script_file << "set xrange [" << x_range.first << ":" << x_range.second << "]\n";
+    } else {
+        // Default X-range from 0 to the maximum k-path value (usually around 1.4)
+        script_file << "set xrange[0.0:1.39]\n";
     }
     
     // Y-axis range (only set automatically if custom range is not provided)
@@ -493,12 +509,15 @@ void generate_band_plot_script(const BandAnalysisResult& result, const std::stri
         script_file << "stats '" << data_filename << "' using 3 nooutput\n";
         script_file << "if (STATS_max > max_energy) max_energy = STATS_max\n";
         script_file << "margin = (max_energy - min_energy) * 0.05\n";
-        script_file << "set yrange [min_energy-margin:max_energy+margin]\n";
+        // Set a fixed range around the Fermi level for better visualization
+        script_file << "set yrange [-0.5:0.5]\n";
     }
     script_file << "\n";
     
-    script_file << "# Plot settings for vertical lines indicating band splitting\n";
-    script_file << "set style line 1 lc rgb '#FF0000' lt 1 lw 4.0\n";
+    script_file << "# Plot settings\n";
+    script_file << "set zeroaxis ls 1.5 dt 2 lw 2.5 lc rgb \"gray\"\n";
+    script_file << "# Define arrow styles for band splitting\n";
+    script_file << "set style line 1 lc rgb 'blue' lt 1 lw 4.0\n";
     script_file << "# Define styles for the vertical lines and end points\n";
     script_file << "set style line 2 lc rgb '#FF0000' lt 1 lw 4.0 pt 7 ps 1.0\n";
     script_file << "# Show vertical lines more prominently\n";
@@ -506,19 +525,19 @@ void generate_band_plot_script(const BandAnalysisResult& result, const std::stri
     
     script_file << "# Plot the data\n";
     script_file << "plot \\\n";
-    script_file << "    '" << data_filename << "' using 1:2 with lines lc rgb '#000000' lw 2.5 title 'Spin Up', \\\n";
-    script_file << "    '" << data_filename << "' using 1:3 with lines lc rgb '#9400D3' lw 2.5 title 'Spin Down'";
+    script_file << "    '" << data_filename << "' using 1:2 with lines lc rgb 'red' lw 2.5 title 'Spin Up', \\\n";
+    script_file << "    '" << data_filename << "' using 1:3 with lines lc rgb 'black' lw 2.5 title 'Spin Down'";
     
     // Only add vertical line plotting if we actually have vertical lines to show
     if (vertical_line_count > 0) {
         script_file << ", \\\n";
-        // Draw vertical lines between spin-up and spin-down bands at max splitting points
-        script_file << "    '" << data_filename << "' using 1:5:6 with lines lc rgb '#FF0000' lw 4.0 title 'Max Splitting', \\\n";
-        // Add points at the endpoints to make vertical lines more visible
-        script_file << "    '" << data_filename << "' using 1:5:(sprintf('')) with points pt 7 ps 1.2 lc rgb '#FF0000' notitle, \\\n";
-        script_file << "    '" << data_filename << "' using 1:6:(sprintf('')) with points pt 7 ps 1.2 lc rgb '#FF0000' notitle, \\\n";
-        // Add text labels for the energy difference, positioned to the right of the vertical line
-        script_file << "    '" << data_filename << "' using 1:($5 + ($6-$5)/2):7 with labels offset 3,0 font 'Arial,10' tc rgb '#FF0000' notitle";
+        // Draw arrows between spin-up and spin-down bands at max splitting points
+        script_file << "    '" << data_filename << "' using ( $1 ):( $5 ):( 0 ):( $6 - $5 ) with vectors nohead lc rgb 'blue' lw 1.5 title 'Max Splitting', \\\n";
+        // Add points at the endpoints to make arrows more visible
+        script_file << "    '" << data_filename << "' using 1:5:(sprintf('')) with points pt 7 ps 0.5 lc rgb 'blue' notitle, \\\n";
+        script_file << "    '" << data_filename << "' using 1:6:(sprintf('')) with points pt 7 ps 0.5 lc rgb 'blue' notitle, \\\n";
+        // Add text labels for the energy difference, positioned to the right of the arrow
+        script_file << "    '" << data_filename << "' using 1:($5 + ($6-$5)/2):7 with labels offset 6,0 font 'Arial,18' tc rgb 'blue' notitle";
     }
     
     script_file << "\n";
