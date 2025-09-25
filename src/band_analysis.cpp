@@ -490,7 +490,7 @@ void generate_band_plot_script(const BandAnalysisResult& result, const std::stri
         script_file << "set xrange [" << x_range.first << ":" << x_range.second << "]\n";
     } else {
         // Default X-range from 0 to the maximum k-path value (usually around 1.4)
-        script_file << "set xrange[0.0:1.39]\n";
+        //script_file << "set xrange[0.0:1.39]\n";
     }
     
     // Y-axis range (only set automatically if custom range is not provided)
@@ -510,7 +510,7 @@ void generate_band_plot_script(const BandAnalysisResult& result, const std::stri
         script_file << "if (STATS_max > max_energy) max_energy = STATS_max\n";
         script_file << "margin = (max_energy - min_energy) * 0.05\n";
         // Set a fixed range around the Fermi level for better visualization
-        script_file << "set yrange [-0.5:0.5]\n";
+        script_file << "set yrange [-1:1]\n";
     }
     script_file << "\n";
     
